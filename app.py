@@ -13,6 +13,9 @@ st.title("📈 Portfolio Dashboard")
 # --- Load Data ---
 portfolio_holdings_data, portfolio_metrics_data = fetch_portfolio_data()
 performance_df = load_performance()
+if performance_df.empty or 'date' not in performance_df.columns:
+    st.error("Failed to load performance data from API. Please check the API endpoint and your connection.")
+    st.stop()
 max_performance_date = performance_df['date'].max()
 min_performance_date = performance_df['date'].min()
 if portfolio_holdings_data is None or portfolio_metrics_data is None:
