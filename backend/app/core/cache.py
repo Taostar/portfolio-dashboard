@@ -1,6 +1,7 @@
 from cachetools import TTLCache
 from functools import wraps
 from typing import Callable, Any
+import asyncio
 import hashlib
 import json
 
@@ -11,6 +12,19 @@ _performance_cache = TTLCache(maxsize=100, ttl=3600)  # 1 hour
 _correlation_cache = TTLCache(maxsize=100, ttl=3600)  # 1 hour
 _exchange_cache = TTLCache(maxsize=100, ttl=86400)  # 1 day
 _benchmark_cache = TTLCache(maxsize=100, ttl=86400)  # 1 day
+
+# Per-key locks so concurrent cache misses (e.g. a page load firing several
+# requests at once) share one in-flight upstream call instead of each firing
+# its own, which was overwhelming the free ngrok tier's connection limits.
+_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_lock(key: str) -> asyncio.Lock:
+    lock = _locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _locks[key] = lock
+    return lock
 
 
 def _make_key(*args, **kwargs) -> str:
@@ -45,9 +59,12 @@ def cached(cache_type: str = "holdings"):
             if key in cache:
                 return cache[key]
 
-            result = await func(*args, **kwargs)
-            cache[key] = result
-            return result
+            async with _get_lock(key):
+                if key in cache:
+                    return cache[key]
+                result = await func(*args, **kwargs)
+                cache[key] = result
+                return result
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs) -> Any:
