@@ -36,7 +36,7 @@ export const LineChart: React.FC<LineChartProps> = ({
         autosize: true,
         title: title ? { text: title, font: { size: 16 } } : undefined,
         xaxis: {
-          title: 'Date',
+          title: { text: 'Date' },
           type: 'date',
           ...(showRangeSelector
             ? {
@@ -53,7 +53,7 @@ export const LineChart: React.FC<LineChartProps> = ({
             : {}),
         },
         yaxis: {
-          title: yAxisTitle,
+          title: yAxisTitle ? { text: yAxisTitle } : undefined,
         },
         margin: { t: title ? 50 : 20, b: showRangeSelector ? 100 : 60, l: 60, r: 20 },
         legend: {

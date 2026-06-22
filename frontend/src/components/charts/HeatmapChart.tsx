@@ -39,8 +39,7 @@ export const HeatmapChart: React.FC<HeatmapChartProps> = ({ data }) => {
           hoverongaps: false,
           hovertemplate: '%{x} vs %{y}<br>Correlation: %{z:.2f}<extra></extra>',
           colorbar: {
-            title: 'Correlation',
-            titleside: 'right',
+            title: { text: 'Correlation', side: 'right' },
           },
         },
       ]}

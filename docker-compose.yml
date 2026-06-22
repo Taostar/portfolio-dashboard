@@ -1,0 +1,47 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: portfolio-backend
+    restart: unless-stopped
+    environment:
+      - EXTERNAL_API_URL=${EXTERNAL_API_URL}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    # No "ports:" published — cloudflared/frontend reach it internally as backend:8000.
+    # ports:
+    #   - "8000:8000"   # uncomment temporarily for local LAN testing
+    networks:
+      - portfolio-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    container_name: portfolio-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    # ports:
+    #   - "8080:80"   # uncomment temporarily for local LAN testing
+    networks:
+      - portfolio-net
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: portfolio-cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - portfolio-net
+
+networks:
+  portfolio-net:
+    driver: bridge

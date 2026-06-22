@@ -42,22 +42,21 @@ export const CandlestickChart: React.FC<CandlestickChartProps> = ({ data }) => {
         autosize: true,
         title: { text: `${data.symbol} Price and Volume`, font: { size: 16 } },
         xaxis: {
-          title: 'Date',
+          title: { text: 'Date' },
           type: 'date',
           rangebreaks: [
             { bounds: ['sat', 'mon'] }, // Hide weekends
           ],
         },
         yaxis: {
-          title: 'Price',
+          title: { text: 'Price' },
           side: 'left',
         },
         yaxis2: {
-          title: 'Volume',
+          title: { text: 'Volume', font: { color: 'rgba(58, 71, 80, 0.6)' } },
           side: 'right',
           overlaying: 'y',
           showgrid: false,
-          titlefont: { color: 'rgba(58, 71, 80, 0.6)' },
           tickfont: { color: 'rgba(58, 71, 80, 0.6)' },
         },
         margin: { t: 50, b: 60, l: 60, r: 60 },

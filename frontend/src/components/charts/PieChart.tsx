@@ -14,14 +14,15 @@ export const PieChart: React.FC<PieChartProps> = ({ data }) => {
           type: 'pie',
           values: data.map((d) => d.market_value_cad),
           labels: data.map((d) => d.symbol),
-          textinfo: 'percent+label',
+          textinfo: 'label+percent',
           textposition: 'inside',
           hoverinfo: 'label+value+percent',
+          // Per-point customdata arrays aren't representable in react-plotly.js's flat Datum[] type
           customdata: data.map((d) => [
             d.percentage.toFixed(2),
             d.currency,
             d.current_price.toFixed(2),
-          ]),
+          ]) as never,
           hovertemplate:
             '%{label}<br>Value: $%{value:,.2f}<br>Currency: %{customdata[1]}<br>Price: $%{customdata[2]}<extra></extra>',
         },

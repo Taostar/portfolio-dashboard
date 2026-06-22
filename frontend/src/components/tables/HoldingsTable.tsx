@@ -1,6 +1,6 @@
 import React from 'react';
 import { getReturnColor } from '../../utils/colorUtils';
-import { formatCurrency, formatPercent, formatNumber } from '../../utils/formatters';
+import { formatPercent, formatNumber } from '../../utils/formatters';
 import type { HoldingItem } from '../../types/portfolio';
 
 interface HoldingsTableProps {

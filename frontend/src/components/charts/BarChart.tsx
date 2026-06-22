@@ -24,8 +24,8 @@ export const BarChart: React.FC<BarChartProps> = ({ data, title }) => {
       layout={{
         autosize: true,
         title: title ? { text: title, font: { size: 16 } } : undefined,
-        xaxis: { title: 'Symbol' },
-        yaxis: { title: 'Market Value (CAD)' },
+        xaxis: { title: { text: 'Symbol' } },
+        yaxis: { title: { text: 'Market Value (CAD)' } },
         margin: { t: title ? 50 : 20, b: 60, l: 80, r: 20 },
       }}
       useResizeHandler
