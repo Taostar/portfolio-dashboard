@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from app.api.v1.schemas.holdings import HoldingsResponse, HoldingItem
-from app.services.external_api import get_holdings_dataframe, load_performance
+from app.services.holdings_service import get_holdings_dataframe, load_performance
 from app.services.market_value_service import calculate_market_value_changes
 
 router = APIRouter(prefix="/holdings", tags=["holdings"])

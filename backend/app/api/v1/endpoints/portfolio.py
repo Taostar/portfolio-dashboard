@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.api.v1.schemas.portfolio import PortfolioOverview, AllocationResponse, AllocationItem
-from app.services.external_api import fetch_portfolio_data, get_holdings_dataframe, load_performance
+from app.services.holdings_service import fetch_portfolio_data, get_holdings_dataframe, load_performance
 from app.services.correlation_service import calculate_portfolio_correlation
 from app.services.market_value_service import calculate_market_value_changes
 
