@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # API configuration
     API_V1_PREFIX: str = "/api/v1"
 
+    # Questrade provider configuration (unused until FEATURE_USE_QUESTRADE_PROVIDER is enabled)
+    QUESTRADE_REFRESH_TOKEN: str = ""
+    QUESTRADE_TOKEN_DIR: str = "/data/questrade_tokens"
+    FEATURE_USE_QUESTRADE_PROVIDER: bool = False
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
