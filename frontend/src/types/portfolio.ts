@@ -37,6 +37,7 @@ export interface HoldingItem {
 
 export interface HoldingsResponse {
   holdings: HoldingItem[];
+  options: HoldingItem[];
   prev_day_change_pct: number | null;
 }
 

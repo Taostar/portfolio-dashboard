@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import Optional
 from app.core.cache import cached
+from app.providers.classifier import split_holdings
 
 
 @cached(cache_type="correlation")
@@ -28,6 +29,12 @@ def calculate_portfolio_correlation(
         current_date = performance_df["date"].max()
         one_year_ago = current_date - pd.DateOffset(years=1)
         yearly_perf_df = performance_df[performance_df["date"] >= one_year_ago]
+
+        # Exclude options before deriving portfolio symbols — their short
+        # price history otherwise collapses the common-trading-day
+        # intersection across all symbols below the 30-day minimum.
+        stocks_etfs_df, _ = split_holdings(holdings_df)
+        holdings_df = stocks_etfs_df
 
         # Get portfolio symbols from holdings
         portfolio_symbols = holdings_df["symbol"].unique().tolist()

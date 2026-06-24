@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import Optional
 from app.core.cache import cached
+from app.providers.classifier import is_option_symbol
 
 
 @cached(cache_type="benchmark")
@@ -34,6 +35,15 @@ def calculate_normalized_benchmark_data(
             zip(portfolio_metrics["Symbols"], portfolio_metrics["Allocations"])
         )
         symbols_allocs = {k: float(v.strip("%")) for k, v in symbols_allocs.items()}
+
+        # Exclude options so the "Portfolio" line only reflects stock/ETF
+        # exposure — these are plain symbol strings (no symbol_info), so
+        # is_option_symbol falls back to its regex classification.
+        symbols_allocs = {
+            symbol: alloc
+            for symbol, alloc in symbols_allocs.items()
+            if not is_option_symbol(symbol)
+        }
 
         # Get sorted symbols present in both prices and allocations
         available_symbols = [s for s in prices_df.columns if s in symbols_allocs]
