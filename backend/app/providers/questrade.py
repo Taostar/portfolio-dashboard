@@ -7,9 +7,7 @@ helpers). `QuestradeProvider` is the only public export of this module; the
 private helper modules should not be imported directly by other code outside
 this package.
 
-No constructor arguments are needed — it reads `get_settings()` internally,
-matching the rest of this codebase's pattern (e.g. `external_api.py`'s
-module-level `settings = get_settings()`).
+No constructor arguments are needed — it reads `get_settings()` internally.
 """
 
 import asyncio

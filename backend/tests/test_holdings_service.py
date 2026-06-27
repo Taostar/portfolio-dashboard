@@ -1,7 +1,9 @@
-"""Tests for app/services/holdings_service.py — the feature-flag routing layer
-introduced in Task 4. These tests verify *routing*, not the internals of either
-side: external_api's HTTP calls are mocked, and QuestradeProvider's methods are
-mocked. No real network/Questrade calls happen here.
+"""Tests for app/services/holdings_service.py.
+
+holdings_service is now unconditionally backed by QuestradeProvider — the
+legacy external_api.py path and its feature flag have been removed.
+Tests verify that the service correctly delegates to _provider and that
+caching is preserved.
 """
 
 import pandas as pd
@@ -34,17 +36,15 @@ def clear_caches_around_test():
 
 
 # ---------------------------------------------------------------------------
-# 1. Flag off -> delegates to external_api
+# 1. fetch_portfolio_data delegates to QuestradeProvider
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_fetch_portfolio_data_flag_off_delegates_to_external_api(monkeypatch):
-    monkeypatch.setattr(holdings_service.settings, "FEATURE_USE_QUESTRADE_PROVIDER", False)
-
-    async def fake_fetch():
+async def test_fetch_portfolio_data_delegates_to_provider(monkeypatch):
+    async def fake_get_holdings():
         return FAKE_HOLDINGS, FAKE_METRICS
 
-    monkeypatch.setattr(holdings_service.external_api, "fetch_portfolio_data", fake_fetch)
+    monkeypatch.setattr(holdings_service._provider, "get_holdings", fake_get_holdings)
 
     holdings, metrics = await holdings_service.fetch_portfolio_data()
 
@@ -53,119 +53,51 @@ async def test_fetch_portfolio_data_flag_off_delegates_to_external_api(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_load_performance_flag_off_delegates_to_external_api(monkeypatch):
-    monkeypatch.setattr(holdings_service.settings, "FEATURE_USE_QUESTRADE_PROVIDER", False)
-
-    async def fake_load_performance():
-        return FAKE_PERFORMANCE_DF
-
-    monkeypatch.setattr(holdings_service.external_api, "load_performance", fake_load_performance)
-
-    df = await holdings_service.load_performance()
-
-    pd.testing.assert_frame_equal(df, FAKE_PERFORMANCE_DF)
-
-
-# ---------------------------------------------------------------------------
-# 2. Flag on -> delegates to QuestradeProvider
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_fetch_portfolio_data_flag_on_delegates_to_provider(monkeypatch):
-    monkeypatch.setattr(holdings_service.settings, "FEATURE_USE_QUESTRADE_PROVIDER", True)
-
-    provider_holdings = [{"symbol": "MSFT", "current_market_value_CAD": 5000.0}]
-    provider_metrics = {"Total Market Value (CAD)": 5000.0, "Symbols": ["MSFT"]}
-
-    async def fake_get_holdings():
-        return provider_holdings, provider_metrics
-
-    monkeypatch.setattr(holdings_service._provider, "get_holdings", fake_get_holdings)
-
-    # Sanity: external_api must NOT be the source of truth here.
-    async def boom():
-        raise AssertionError("external_api.fetch_portfolio_data should not be called when flag is on")
-
-    monkeypatch.setattr(holdings_service.external_api, "fetch_portfolio_data", boom)
-
-    holdings, metrics = await holdings_service.fetch_portfolio_data()
-
-    assert holdings == provider_holdings
-    assert metrics == provider_metrics
-
-
-@pytest.mark.asyncio
-async def test_load_performance_flag_on_delegates_to_provider(monkeypatch):
-    monkeypatch.setattr(holdings_service.settings, "FEATURE_USE_QUESTRADE_PROVIDER", True)
-
-    provider_df = pd.DataFrame(
-        [
-            {"symbol": "MSFT", "date": "2024-01-01", "open": 2, "high": 2, "low": 2, "close": 200.0, "volume": 20},
-        ]
-    )
-
+async def test_load_performance_delegates_to_provider(monkeypatch):
     async def fake_fetch_portfolio_data():
-        return [{"symbol": "MSFT"}], {"Symbols": ["MSFT"]}
+        return [{"symbol": "AAPL"}], {"Symbols": ["AAPL"]}
 
     captured = {}
 
     async def fake_get_market_data(symbols, days=365):
         captured["symbols"] = symbols
-        captured["days"] = days
-        return provider_df
+        return FAKE_PERFORMANCE_DF
 
-    # fetch_portfolio_data is this module's own (routed) version, used to derive symbols.
     monkeypatch.setattr(holdings_service, "fetch_portfolio_data", fake_fetch_portfolio_data)
     monkeypatch.setattr(holdings_service._provider, "get_market_data", fake_get_market_data)
 
-    async def boom():
-        raise AssertionError("external_api.load_performance should not be called when flag is on")
-
-    monkeypatch.setattr(holdings_service.external_api, "load_performance", boom)
-
     df = await holdings_service.load_performance()
 
-    pd.testing.assert_frame_equal(df, provider_df)
-    assert captured["symbols"] == ["MSFT"]
+    pd.testing.assert_frame_equal(df, FAKE_PERFORMANCE_DF)
+    assert captured["symbols"] == ["AAPL"]
 
 
 # ---------------------------------------------------------------------------
-# 3. get_holdings_dataframe / get_portfolio_metrics build on fetch_portfolio_data's routing
+# 2. get_holdings_dataframe / get_portfolio_metrics build on fetch_portfolio_data
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_get_holdings_dataframe_and_metrics_flag_off(monkeypatch):
-    monkeypatch.setattr(holdings_service.settings, "FEATURE_USE_QUESTRADE_PROVIDER", False)
-
+async def test_get_holdings_dataframe_wraps_holdings_list(monkeypatch):
     async def fake_fetch():
         return FAKE_HOLDINGS, FAKE_METRICS
 
     monkeypatch.setattr(holdings_service, "fetch_portfolio_data", fake_fetch)
 
     df = await holdings_service.get_holdings_dataframe()
-    metrics = await holdings_service.get_portfolio_metrics()
 
     pd.testing.assert_frame_equal(df, pd.DataFrame(FAKE_HOLDINGS))
-    assert metrics == FAKE_METRICS
 
 
 @pytest.mark.asyncio
-async def test_get_holdings_dataframe_and_metrics_flag_on(monkeypatch):
-    monkeypatch.setattr(holdings_service.settings, "FEATURE_USE_QUESTRADE_PROVIDER", True)
-
-    provider_holdings = [{"symbol": "MSFT", "current_market_value_CAD": 5000.0}]
-    provider_metrics = {"Total Market Value (CAD)": 5000.0}
-
+async def test_get_portfolio_metrics_returns_metrics(monkeypatch):
     async def fake_fetch():
-        return provider_holdings, provider_metrics
+        return FAKE_HOLDINGS, FAKE_METRICS
 
     monkeypatch.setattr(holdings_service, "fetch_portfolio_data", fake_fetch)
 
-    df = await holdings_service.get_holdings_dataframe()
     metrics = await holdings_service.get_portfolio_metrics()
 
-    pd.testing.assert_frame_equal(df, pd.DataFrame(provider_holdings))
-    assert metrics == provider_metrics
+    assert metrics == FAKE_METRICS
 
 
 @pytest.mark.asyncio
@@ -184,20 +116,18 @@ async def test_get_holdings_dataframe_handles_none():
 
 
 # ---------------------------------------------------------------------------
-# 4. Caching is preserved
+# 3. Caching is preserved
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_fetch_portfolio_data_is_cached(monkeypatch):
-    monkeypatch.setattr(holdings_service.settings, "FEATURE_USE_QUESTRADE_PROVIDER", False)
-
     call_count = {"n": 0}
 
-    async def fake_fetch():
+    async def fake_get_holdings():
         call_count["n"] += 1
         return FAKE_HOLDINGS, FAKE_METRICS
 
-    monkeypatch.setattr(holdings_service.external_api, "fetch_portfolio_data", fake_fetch)
+    monkeypatch.setattr(holdings_service._provider, "get_holdings", fake_get_holdings)
 
     await holdings_service.fetch_portfolio_data()
     await holdings_service.fetch_portfolio_data()
@@ -207,15 +137,17 @@ async def test_fetch_portfolio_data_is_cached(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_load_performance_is_cached(monkeypatch):
-    monkeypatch.setattr(holdings_service.settings, "FEATURE_USE_QUESTRADE_PROVIDER", False)
-
     call_count = {"n": 0}
 
-    async def fake_load_performance():
+    async def fake_fetch_portfolio_data():
+        return [{"symbol": "AAPL"}], {}
+
+    async def fake_get_market_data(symbols, days=365):
         call_count["n"] += 1
         return FAKE_PERFORMANCE_DF
 
-    monkeypatch.setattr(holdings_service.external_api, "load_performance", fake_load_performance)
+    monkeypatch.setattr(holdings_service, "fetch_portfolio_data", fake_fetch_portfolio_data)
+    monkeypatch.setattr(holdings_service._provider, "get_market_data", fake_get_market_data)
 
     await holdings_service.load_performance()
     await holdings_service.load_performance()
@@ -224,9 +156,6 @@ async def test_load_performance_is_cached(monkeypatch):
 
 
 def test_fetch_portfolio_data_has_holdings_cache_decorator():
-    # @cached wraps with functools.wraps, so __wrapped__ should point at the
-    # inner coroutine function; presence of caching behavior is asserted above,
-    # this just checks the decoration didn't get dropped.
     assert hasattr(holdings_service.fetch_portfolio_data, "__wrapped__")
 
 
@@ -235,7 +164,7 @@ def test_load_performance_has_performance_cache_decorator():
 
 
 # ---------------------------------------------------------------------------
-# 5. Endpoint imports
+# 4. Endpoint imports
 # ---------------------------------------------------------------------------
 
 def test_endpoint_modules_import_cleanly_from_holdings_service():

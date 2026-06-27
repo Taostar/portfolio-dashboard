@@ -3,9 +3,6 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # External API configuration
-    EXTERNAL_API_URL: str = "https://a943-99-247-104-60.ngrok-free.app"
-
     # Cache TTL values (in seconds)
     CACHE_TTL_HOLDINGS: int = 300  # 5 minutes
     CACHE_TTL_PERFORMANCE: int = 3600  # 1 hour
@@ -19,10 +16,9 @@ class Settings(BaseSettings):
     # API configuration
     API_V1_PREFIX: str = "/api/v1"
 
-    # Questrade provider configuration (unused until FEATURE_USE_QUESTRADE_PROVIDER is enabled)
+    # Questrade provider configuration
     QUESTRADE_REFRESH_TOKEN: str = ""
     QUESTRADE_TOKEN_DIR: str = "/data/questrade_tokens"
-    FEATURE_USE_QUESTRADE_PROVIDER: bool = False
 
     class Config:
         env_file = ".env"

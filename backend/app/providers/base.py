@@ -5,8 +5,7 @@ import pandas as pd
 class BrokerProvider(ABC):
     @abstractmethod
     async def get_holdings(self) -> tuple[list[dict], dict]:
-        """Returns (portfolio_holdings, portfolio_metrics) — same shape the dashboard's
-        external_api.py currently returns from the upstream /accounts/holdings response."""
+        """Returns (portfolio_holdings, portfolio_metrics)."""
         ...
 
     @abstractmethod
