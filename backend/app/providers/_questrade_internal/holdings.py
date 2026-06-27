@@ -10,7 +10,6 @@ classifier reads it directly off the holdings dicts/DataFrame rows.
 """
 
 import logging
-import os
 import random
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Union
@@ -18,6 +17,8 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 from qtrade import Questrade
+
+from app.services.manual_holdings_service import load_manual_holdings
 
 logger = logging.getLogger(__name__)
 
@@ -406,55 +407,29 @@ def fix_average_entry_price(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_additional_rows(df: pd.DataFrame, client: Questrade) -> pd.DataFrame:
-    """Add additional rows for two more stocks in other accounts.
-
-    PERSONAL DATA PATCH: BDX and IFC.TO are held in accounts not reachable via
-    the Questrade API; quantities come from QTY_BDX/QTY_IFC env vars and the
-    entry prices are the account owner's real cost basis — ported verbatim.
+    """Append manually-configured holdings (accounts not reachable via the
+    Questrade API) loaded from the YAML config at MANUAL_HOLDINGS_CONFIG_PATH.
     """
-    additional_rows = pd.DataFrame(
-        [
-            {
-                "symbol": "BDX",
-                "currency": "USD",
-                "current_price": 0.0,
-                "current_market_value": 0.0,
-                "quantity": int(os.environ.get("QTY_BDX", 0)),
-                "open_quantity": int(os.environ.get("QTY_BDX", 0)),
-                "average_entry_price": 249.01,
-            },
-            {
-                "symbol": "IFC.TO",
-                "currency": "CAD",
-                "current_price": 0.0,
-                "current_market_value": 0.0,
-                "quantity": int(os.environ.get("QTY_IFC", 0)),
-                "open_quantity": int(os.environ.get("QTY_IFC", 0)),
-                "average_entry_price": 216.32,
-            },
-        ]
+    manual_config = load_manual_holdings()
+    if not manual_config.holdings:
+        return df
+
+    additional_rows = pd.DataFrame([h.model_dump() for h in manual_config.holdings])
+    additional_rows["current_price"] = 0.0
+    additional_rows["current_market_value"] = 0.0
+
+    for symbol in additional_rows["symbol"]:
+        try:
+            quote = client.get_quote(symbol)
+            price = float(quote.get("lastTradePrice", 0) or 0)
+        except Exception as e:
+            logger.error(f"Error fetching quote for manual holding {symbol}: {e}")
+            continue
+        additional_rows.loc[additional_rows["symbol"] == symbol, "current_price"] = price
+
+    additional_rows["current_market_value"] = (
+        additional_rows["current_price"] * additional_rows["quantity"].astype(float)
     )
-
-    numeric_cols = ["current_price", "current_market_value", "average_entry_price"]
-    for col in numeric_cols:
-        if col in additional_rows.columns:
-            additional_rows[col] = additional_rows[col].astype(float)
-
-    try:
-        bdx_quote = client.get_quote("BDX")
-        bdx_price = bdx_quote["lastTradePrice"] if "lastTradePrice" in bdx_quote else 0
-
-        ifc_quote = client.get_quote("IFC.TO")
-        ifc_price = ifc_quote["lastTradePrice"] if "lastTradePrice" in ifc_quote else 0
-
-        additional_rows.loc[additional_rows["symbol"] == "BDX", "current_price"] = float(bdx_price)
-        additional_rows.loc[additional_rows["symbol"] == "IFC.TO", "current_price"] = float(ifc_price)
-
-        additional_rows["current_market_value"] = additional_rows["current_price"] * additional_rows[
-            "quantity"
-        ].astype(float)
-    except Exception as e:
-        logger.error(f"Error fetching quotes for additional symbols: {e}")
 
     return pd.concat([df, additional_rows], ignore_index=True)
 

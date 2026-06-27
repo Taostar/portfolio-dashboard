@@ -72,3 +72,15 @@ export interface CandlestickData {
   close: number[];
   volume: number[];
 }
+
+export interface ManualHolding {
+  symbol: string;
+  currency: string;
+  quantity: number;
+  open_quantity: number;
+  average_entry_price: number;
+}
+
+export interface ManualHoldingsConfig {
+  holdings: ManualHolding[];
+}

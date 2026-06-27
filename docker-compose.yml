@@ -11,6 +11,7 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS}
     volumes:
       - questrade-tokens:/data/questrade_tokens
+      - manual-holdings-config:/data/manual_holdings
     # No "ports:" published — cloudflared/frontend reach it internally as backend:8000.
     # ports:
     #   - "8000:8000"   # uncomment temporarily for local LAN testing
@@ -51,3 +52,4 @@ networks:
 
 volumes:
   questrade-tokens:
+  manual-holdings-config:

@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     QUESTRADE_REFRESH_TOKEN: str = ""
     QUESTRADE_TOKEN_DIR: str = "/data/questrade_tokens"
 
+    # Manual ad-hoc holdings (accounts not reachable via the Questrade API)
+    MANUAL_HOLDINGS_CONFIG_PATH: str = "/data/manual_holdings/holdings.yaml"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

@@ -1,0 +1,16 @@
+# Template for manually-configured holdings (accounts not reachable via the
+# Questrade API). Copy this to the path set by MANUAL_HOLDINGS_CONFIG_PATH
+# (default /data/manual_holdings/holdings.yaml) and fill in real values via
+# the PUT /api/v1/manual-holdings endpoint or the frontend's manual holdings
+# page — do not commit real cost-basis figures to this file.
+holdings:
+  - symbol: BDX
+    currency: USD
+    quantity: 0
+    open_quantity: 0
+    average_entry_price: 0.0
+  - symbol: IFC.TO
+    currency: CAD
+    quantity: 0
+    open_quantity: 0
+    average_entry_price: 0.0
