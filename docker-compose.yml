@@ -6,8 +6,11 @@ services:
     container_name: portfolio-backend
     restart: unless-stopped
     environment:
-      - EXTERNAL_API_URL=${EXTERNAL_API_URL}
+      - QUESTRADE_REFRESH_TOKEN=${QUESTRADE_REFRESH_TOKEN}
+      - QUESTRADE_TOKEN_DIR=/data/questrade_tokens
       - CORS_ORIGINS=${CORS_ORIGINS}
+    volumes:
+      - questrade-tokens:/data/questrade_tokens
     # No "ports:" published — cloudflared/frontend reach it internally as backend:8000.
     # ports:
     #   - "8000:8000"   # uncomment temporarily for local LAN testing
@@ -45,3 +48,6 @@ services:
 networks:
   portfolio-net:
     driver: bridge
+
+volumes:
+  questrade-tokens:

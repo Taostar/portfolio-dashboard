@@ -1,42 +1,37 @@
-#!/bin/sh
-# Checks whether the backend container can reach EXTERNAL_API_URL (the upstream
-# holdings/market-data API). Run this on the NAS when the frontend shows
-# "Failed to load the allocation data" or the API returns 503
-# "Unable to fetch holdings data" -- it isolates whether the problem is
-# upstream connectivity (this script) vs. the tunnel/CORS/frontend layer.
+#!/usr/bin/env sh
+# Diagnose a non-responding backend by hitting key endpoints from inside the
+# running portfolio-backend container.
 #
-# Usage (on the NAS, from the repo root):
+# Run on the NAS (or locally) from the repo root when the frontend shows
+# "Failed to load data" errors:
+#
 #   sh scripts/test_upstream_connectivity.sh
 #
-# Reads EXTERNAL_API_URL from .env in the repo root; override by passing it
-# as the first argument instead:
-#   sh scripts/test_upstream_connectivity.sh https://your-ngrok-url.ngrok-free.app
+# Set DOCKER if the daemon requires sudo:
+#   DOCKER="sudo docker" sh scripts/test_upstream_connectivity.sh
 
 set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+DOCKER="${DOCKER:-docker}"
 
-if [ "${1:-}" != "" ]; then
-  EXTERNAL_API_URL="$1"
-elif [ -f "$REPO_ROOT/.env" ]; then
-  EXTERNAL_API_URL="$(grep '^EXTERNAL_API_URL=' "$REPO_ROOT/.env" | cut -d= -f2-)"
-fi
+echo "==> Backend health check"
+$DOCKER exec portfolio-backend wget -qO- http://localhost:8000/health && echo ""
 
-if [ "${EXTERNAL_API_URL:-}" = "" ]; then
-  echo "Could not determine EXTERNAL_API_URL (no .env found and no argument given)." >&2
-  exit 1
-fi
+echo ""
+echo "==> Questrade auth / holdings fetch (may take a few seconds)"
+$DOCKER exec portfolio-backend python3 -c "
+import asyncio
+from app.providers._questrade_internal.auth import get_questrade_clients
 
-echo "Testing from inside the portfolio-backend container -> ${EXTERNAL_API_URL}/accounts/holdings"
-echo
+async def check():
+    try:
+        clients = get_questrade_clients()
+        print(f'  Clients initialised: {len(clients)}')
+        for i, c in enumerate(clients):
+            ids = c.get_account_id()
+            print(f'  Client {i}: accounts {ids}')
+    except Exception as e:
+        print(f'  ERROR: {type(e).__name__}: {e}')
 
-sudo docker exec portfolio-backend python3 -c "
-import httpx
-try:
-    r = httpx.get('${EXTERNAL_API_URL}/accounts/holdings', timeout=10)
-    print('STATUS', r.status_code)
-    print(r.text[:200])
-except Exception as e:
-    print('ERROR', type(e).__name__, e)
+asyncio.run(check())
 "
