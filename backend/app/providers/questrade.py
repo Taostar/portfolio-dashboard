@@ -14,15 +14,14 @@ module-level `settings = get_settings()`).
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
 
 import pandas as pd
 
 from app.config import get_settings
 from app.providers.base import BrokerProvider
-from app.providers._questrade_internal.auth import get_questrade_client, get_questrade_clients
+from app.providers._questrade_internal.auth import get_questrade_clients
 from app.providers._questrade_internal.holdings import get_all_accounts_holdings_multi
-from app.providers._questrade_internal.market import fetch_symbols_market_data
+from app.providers._questrade_internal.market import fetch_symbols_market_data_yf
 from app.providers._questrade_internal.metrics import calc_portfolio_metrics
 
 logger = logging.getLogger(__name__)
@@ -65,7 +64,4 @@ class QuestradeProvider(BrokerProvider):
     def _get_market_data_sync(
         self, symbols: list[str], days: int = 365, interval: str = "OneDay"
     ) -> pd.DataFrame:
-        client = get_questrade_client()
-        start_date = datetime.now() - timedelta(days=days)
-        end_date = datetime.now()
-        return fetch_symbols_market_data(client, symbols, start_date, end_date, interval)
+        return fetch_symbols_market_data_yf(symbols, days, interval)

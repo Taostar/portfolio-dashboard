@@ -1,142 +1,105 @@
-"""Market data retrieval — ported from Questrade-API/utils/market.py
-(per-symbol `get_symbol_id`/`get_market_data`) and the thread-pool
-parallelization pattern from
-Questrade-API/utils/collect_performance.py::collect_all_performance_data.
+"""Historical market data — sourced from yfinance rather than Questrade's
+own `/markets/candles` endpoint.
 
-Unlike the old code, this skips the `MarketPerformance`/`MarketCandle`
-Pydantic wrapping and the CSV round trip — `fetch_symbols_market_data` builds
-the long-format DataFrame (symbol, date, open, high, low, close, volume)
-directly, which is what `QuestradeProvider.get_market_data()` returns.
+Questrade enforces a separate, easily-exhausted rate-limit bucket for
+market-data endpoints (quotes/candles/ticker info) distinct from
+account-data endpoints — a single `QuestradeProvider.get_holdings()` call
+already fetches per-symbol quotes/ticker info for current pricing, and
+piling a year of historical candles for every symbol on top of that
+repeatedly tripped 403s in practice. yfinance has no such quota and is
+already a backend dependency (see `app/services/exchange_service.py`), so
+historical performance data is fetched from there instead — current
+price/quote data for holdings still comes from Questrade (unaffected by
+this change).
 """
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List
 
 import pandas as pd
-from qtrade import Questrade
+import yfinance as yf
+
+from app.providers.classifier import is_option_symbol
 
 logger = logging.getLogger(__name__)
 
-
-def get_symbol_id(client: Questrade, symbol: str) -> int:
-    """Get the symbol ID for a given ticker symbol.
-
-    Returns 0 as a fallback if the symbol can't be looked up (matches the old
-    behavior — callers that need the ID treat 0 as "unknown").
-    """
-    logger.info(f"Looking up symbol ID for {symbol}")
-    try:
-        ticker_info = client.ticker_information([symbol])
-        if not ticker_info or len(ticker_info) == 0:
-            logger.error(f"Symbol '{symbol}' not found in ticker_information response")
-            raise ValueError(f"Symbol '{symbol}' not found")
-
-        symbol_id = ticker_info[0].get("symbolId")
-        if not symbol_id:
-            logger.error(f"Symbol ID not found in ticker_information response for '{symbol}'")
-            raise ValueError(f"Symbol ID not found for '{symbol}'")
-
-        logger.info(f"Found symbol ID {symbol_id} for {symbol}")
-        return symbol_id
-    except Exception as e:
-        logger.error(f"Error getting symbol ID for {symbol}: {e}")
-        logger.info(f"Returning 0 as a fallback symbol ID for {symbol}")
-        return 0
+# Questrade interval names -> yfinance interval strings. Anything not listed
+# here falls back to "1d" (the only interval actually exercised today).
+_INTERVAL_MAP = {
+    "OneDay": "1d",
+    "OneWeek": "1wk",
+    "OneMonth": "1mo",
+}
 
 
-def get_market_data(
-    client: Questrade,
-    symbol: str,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-    interval: str = "OneDay",
-) -> List[dict]:
-    """Get historical candles for a single symbol via
-    `client.get_historical_data`. Returns a list of raw candle dicts as
-    returned by qtrade (keys: start, end, open, high, low, close, volume) —
-    empty list on any failure (logged, not raised).
-    """
-    if not end_date:
-        end_date = datetime.now()
-    if not start_date:
-        start_date = end_date - timedelta(days=30)
-
-    start_date_str = start_date.strftime("%Y-%m-%d")
-    end_date_str = end_date.strftime("%Y-%m-%d")
-
-    try:
-        candles_data = client.get_historical_data(symbol, start_date_str, end_date_str, interval)
-        return candles_data or []
-    except Exception as e:
-        logger.error(f"Error getting historical data for {symbol}: {e}")
-        return []
-
-
-def _candle_to_row(symbol: str, candle: dict) -> Optional[dict]:
-    """Convert one raw qtrade candle dict into a long-format row. Returns None
-    if the candle is missing a usable date (skipped, not raised)."""
-    raw_date = candle.get("start") or candle.get("date")
-    if not raw_date:
-        return None
-    try:
-        date_str = str(raw_date).replace("Z", "+00:00")
-        date = datetime.fromisoformat(date_str).strftime("%Y-%m-%d")
-    except Exception:
-        return None
-
-    return {
-        "symbol": symbol,
-        "date": date,
-        "open": candle.get("open"),
-        "high": candle.get("high"),
-        "low": candle.get("low"),
-        "close": candle.get("close"),
-        "volume": candle.get("volume"),
-    }
-
-
-def fetch_symbols_market_data(
-    client: Questrade,
-    symbols: List[str],
-    start_date: datetime,
-    end_date: datetime,
-    interval: str = "OneDay",
+def fetch_symbols_market_data_yf(
+    symbols: List[str], days: int = 365, interval: str = "OneDay"
 ) -> pd.DataFrame:
-    """Fetch candles for multiple symbols in parallel via a ThreadPoolExecutor
-    (same pattern as collect_all_performance_data: max_workers =
-    min(len(symbols), 10)), and build a long-format DataFrame directly
-    (columns: symbol, date, open, high, low, close, volume).
+    """Fetch historical candles for multiple symbols via yfinance, returning
+    a long-format DataFrame (columns: symbol, date, open, high, low, close,
+    volume) — same shape `fetch_symbols_market_data` (the old qtrade-backed
+    version) produced.
 
-    A symbol whose fetch fails or returns no data is skipped (logged) so one
-    bad symbol doesn't fail the whole batch. Missing OHLCV values are
-    forward-filled per-symbol, then the result is sorted by symbol, date.
+    Option contracts (e.g. `NVDA10Jul26P180.00`) aren't real yfinance
+    tickers and are filtered out before calling `yf.download` — they
+    already have no representation in correlation/benchmark calculations
+    (see `app.providers.classifier`), and `calc_portfolio_metrics` already
+    tolerates symbols with no historical data.
     """
-    if not symbols:
+    stock_etf_symbols = [s for s in symbols if not is_option_symbol(s)]
+
+    if not stock_etf_symbols:
         return pd.DataFrame(columns=["symbol", "date", "open", "high", "low", "close", "volume"])
 
-    max_workers = min(len(symbols), 10)
+    yf_interval = _INTERVAL_MAP.get(interval, "1d")
+    period = f"{days}d"
 
-    def fetch_one(symbol: str):
-        try:
-            candles = get_market_data(client, symbol, start_date, end_date, interval)
-            if not candles:
-                logger.warning(f"No historical data found for {symbol}")
-            return symbol, candles
-        except Exception as e:
-            logger.error(f"Error fetching market data for {symbol}: {e}")
-            return symbol, []
+    try:
+        raw = yf.download(stock_etf_symbols, period=period, interval=yf_interval, progress=False)
+    except Exception as e:
+        logger.error(f"Error fetching yfinance data for {stock_etf_symbols}: {e}")
+        return pd.DataFrame(columns=["symbol", "date", "open", "high", "low", "close", "volume"])
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = list(executor.map(fetch_one, symbols))
+    if raw is None or raw.empty:
+        return pd.DataFrame(columns=["symbol", "date", "open", "high", "low", "close", "volume"])
 
     rows = []
-    for symbol, candles in results:
-        for candle in candles:
-            row = _candle_to_row(symbol, candle)
-            if row is not None:
-                rows.append(row)
+    field_map = {"Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume"}
+
+    if isinstance(raw.columns, pd.MultiIndex):
+        for symbol in stock_etf_symbols:
+            if symbol not in raw.columns.get_level_values(1):
+                logger.warning(f"No yfinance data found for {symbol}")
+                continue
+            symbol_df = raw.xs(symbol, axis=1, level=1)
+            if symbol_df.get("Close") is None or symbol_df["Close"].isna().all():
+                # Delisted/no-data ticker: yf.download still emits a row per
+                # date in a multi-ticker batch, just filled with NaN. Drop it
+                # entirely rather than feeding NaN rows downstream — one
+                # all-NaN symbol poisons every other symbol's common-date
+                # intersection in correlation/benchmark calculations.
+                logger.warning(f"No real yfinance data found for {symbol} (all-NaN)")
+                continue
+            for date, row in symbol_df.iterrows():
+                rows.append(
+                    {
+                        "symbol": symbol,
+                        "date": date.strftime("%Y-%m-%d"),
+                        **{field_map[f]: row.get(f) for f in field_map},
+                    }
+                )
+    elif raw.get("Close") is not None and not raw["Close"].isna().all():
+        # Single ticker -> flat columns, no per-symbol selection needed.
+        symbol = stock_etf_symbols[0]
+        for date, row in raw.iterrows():
+            rows.append(
+                {
+                    "symbol": symbol,
+                    "date": date.strftime("%Y-%m-%d"),
+                    **{field_map[f]: row.get(f) for f in field_map},
+                }
+            )
 
     df = pd.DataFrame(rows, columns=["symbol", "date", "open", "high", "low", "close", "volume"])
 

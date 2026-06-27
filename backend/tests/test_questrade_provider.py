@@ -57,25 +57,24 @@ async def test_get_holdings_wires_market_data_into_metrics(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_market_data_uses_single_client(monkeypatch):
+async def test_get_market_data_delegates_to_yfinance_fetch(monkeypatch):
+    """get_market_data fetches historical prices via yfinance, not a
+    Questrade client — Questrade's market-data endpoints are rate-limited
+    separately from account data, so this path avoids them entirely."""
     captured = {}
 
-    def fake_client_factory():
-        captured["called"] = True
-        return "fake-client"
-
-    def fake_fetch(client, symbols, start_date, end_date, interval):
+    def fake_fetch(symbols, days, interval):
         captured["symbols"] = symbols
+        captured["days"] = days
         captured["interval"] = interval
         return pd.DataFrame([{"symbol": "AAPL", "date": "2024-01-01", "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}])
 
-    monkeypatch.setattr("app.providers.questrade.get_questrade_client", fake_client_factory)
-    monkeypatch.setattr("app.providers.questrade.fetch_symbols_market_data", fake_fetch)
+    monkeypatch.setattr("app.providers.questrade.fetch_symbols_market_data_yf", fake_fetch)
 
     provider = QuestradeProvider()
     df = await provider.get_market_data(["AAPL"], days=30, interval="OneDay")
 
-    assert captured["called"] is True
     assert captured["symbols"] == ["AAPL"]
+    assert captured["days"] == 30
     assert captured["interval"] == "OneDay"
     assert list(df.columns) == ["symbol", "date", "open", "high", "low", "close", "volume"]

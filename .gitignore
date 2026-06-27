@@ -26,6 +26,10 @@ ENV/
 .env.*
 !.env.example
 
+# Questrade OAuth token cache (local dev; production uses a Docker volume)
+backend/.questrade_tokens/
+.questrade_tokens/
+
 # Testing
 .pytest_cache/
 .coverage

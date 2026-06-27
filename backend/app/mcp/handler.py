@@ -25,7 +25,11 @@ from typing import Dict, Any, List, Optional, Union, Tuple
 from pydantic import ValidationError
 
 from app.providers._questrade_internal.auth import get_questrade_client, get_questrade_clients
-from app.providers._questrade_internal.holdings import get_account_positions, get_all_account_positions_multi
+from app.providers._questrade_internal.holdings import (
+    get_account_list,
+    get_account_positions,
+    get_all_account_positions_multi,
+)
 from app.providers.questrade import QuestradeProvider
 from app.mcp.schema import (
     MCPRequest,
@@ -169,7 +173,7 @@ class MCPHandler:
         seen = set()
         for client in get_questrade_clients():
             try:
-                for acc in client.get_accounts().get('accounts', []):
+                for acc in get_account_list(client):
                     key = acc.get('number')
                     if key in seen:
                         continue

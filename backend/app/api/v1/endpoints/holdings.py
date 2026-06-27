@@ -1,3 +1,4 @@
+import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from app.api.v1.schemas.holdings import HoldingsResponse, HoldingItem
 from app.providers.classifier import split_holdings
@@ -5,6 +6,14 @@ from app.services.holdings_service import get_holdings_dataframe, load_performan
 from app.services.market_value_service import calculate_market_value_changes
 
 router = APIRouter(prefix="/holdings", tags=["holdings"])
+
+
+def _none_if_nan(value):
+    """A symbol missing performance data gets `None` assigned into a column
+    that already holds floats for other rows — pandas silently upcasts that
+    `None` to NaN, which FastAPI's JSON encoder rejects outright. Convert
+    back to `None` here, at the boundary where the value leaves pandas."""
+    return None if pd.isna(value) else value
 
 
 def _build_holding_items(df) -> list[HoldingItem]:
@@ -19,11 +28,11 @@ def _build_holding_items(df) -> list[HoldingItem]:
                 market_value=float(row.get("current_market_value", 0)),
                 market_value_cad=float(row.get("current_market_value_CAD", 0)),
                 portfolio_pct=float(row.get("percentage", 0)),
-                change_1d=row.get("change_1d"),
-                change_1w=row.get("change_1w"),
-                change_1m=row.get("change_1m"),
-                change_6m=row.get("change_6m"),
-                change_1y=row.get("change_1y"),
+                change_1d=_none_if_nan(row.get("change_1d")),
+                change_1w=_none_if_nan(row.get("change_1w")),
+                change_1m=_none_if_nan(row.get("change_1m")),
+                change_6m=_none_if_nan(row.get("change_6m")),
+                change_1y=_none_if_nan(row.get("change_1y")),
             )
         )
     return items

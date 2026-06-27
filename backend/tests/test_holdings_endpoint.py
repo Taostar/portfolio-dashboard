@@ -94,6 +94,43 @@ def test_get_holdings_splits_stocks_and_options():
     assert options_symbols == {"NVDA10Jul26P180.00"}
 
 
+def test_get_holdings_serializes_when_one_symbol_has_no_performance_data():
+    """A symbol with no rows in performance_df (e.g. delisted on the market
+    data source) gets `None` assigned into a column where other rows already
+    hold floats — pandas silently upcasts that None to NaN, and FastAPI's
+    JSON encoder rejects NaN outright. The response must still serialize."""
+    holdings_df = _holdings_df()
+    extra_row = pd.DataFrame(
+        [
+            {
+                "symbol": "DELISTED",
+                "currency": "USD",
+                "quantity": 1,
+                "current_price": 10.0,
+                "current_market_value": 10.0,
+                "current_market_value_CAD": 13.0,
+                "percentage": 5.0,
+                "security_type": "Stock",
+            }
+        ]
+    )
+    holdings_df = pd.concat([holdings_df, extra_row], ignore_index=True)
+
+    # performance_df deliberately has no rows at all for DELISTED.
+    with patch.multiple(
+        "app.api.v1.endpoints.holdings",
+        get_holdings_dataframe=AsyncMock(return_value=holdings_df),
+        load_performance=AsyncMock(return_value=_performance_df()),
+    ):
+        response = client.get("/api/v1/holdings")
+
+    assert response.status_code == 200
+    body = response.json()
+    delisted = next(h for h in body["holdings"] if h["symbol"] == "DELISTED")
+    assert delisted["change_1d"] is None
+    assert delisted["change_1w"] is None
+
+
 def test_get_top_holdings_excludes_options_even_with_higher_value():
     # Give the option a market value higher than the stocks so a naive
     # top-N by value would otherwise surface it.

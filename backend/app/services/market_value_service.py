@@ -37,8 +37,12 @@ def calculate_market_value_changes(
         prev_day_market_value_cad = 0.0
         current_day_market_value_cad = 0.0
 
-        # Get CAD exchange rate
-        cad_exchange_sample = result_df[result_df["currency"] == "USD"].head(1)
+        # Get CAD exchange rate from a USD row with a nonzero market value —
+        # a zero-value row (e.g. a personal-data-patch holding whose quote
+        # lookup failed) would otherwise divide by zero and silently corrupt
+        # this into NaN.
+        usd_rows = result_df[(result_df["currency"] == "USD") & (result_df["current_market_value"] != 0)]
+        cad_exchange_sample = usd_rows.head(1)
         if not cad_exchange_sample.empty:
             cad_exchange_rate = float(
                 cad_exchange_sample["current_market_value_CAD"].iloc[0]

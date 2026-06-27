@@ -43,7 +43,9 @@ def get_account_list(client: Questrade) -> List[Dict[str, Any]]:
     return accounts
 
 
-def get_account_positions(client: Questrade, account_id: str) -> Dict[str, Any]:
+def get_account_positions(
+    client: Questrade, account_id: str, symbol_cache: Optional[Dict[str, Dict[str, Any]]] = None
+) -> Dict[str, Any]:
     """Get all positions (holdings) for a specific account.
 
     Returns a dict shaped like the old `AccountPosition` model:
@@ -51,8 +53,17 @@ def get_account_positions(client: Questrade, account_id: str) -> Dict[str, Any]:
     where each holding dict carries `security_type` (from `ticker_information`'s
     `securityType` field) in addition to the original fields — stashed here so
     a later task's option classifier doesn't need a second API call.
+
+    `symbol_cache` lets callers iterating multiple accounts (e.g. a multi-
+    account holdings fetch) share one ticker_information/get_quote lookup per
+    unique symbol instead of repeating it per account — the same symbol held
+    across several accounts otherwise multiplies API calls and trips
+    Questrade's rate limit. Defaults to a fresh dict (no sharing) so callers
+    that only ever fetch one account are unaffected.
     """
     logger.info(f"Retrieving positions for account {account_id}")
+    if symbol_cache is None:
+        symbol_cache = {}
 
     accounts = get_account_list(client)
     account_info = next((acc for acc in accounts if acc.get("number") == account_id), None)
@@ -74,19 +85,24 @@ def get_account_positions(client: Questrade, account_id: str) -> Dict[str, Any]:
             logger.warning(f"No symbol found for position in account {account_id}")
             continue
 
-        try:
-            ticker_info = client.ticker_information([symbol])
-            symbol_info = ticker_info[0] if ticker_info and len(ticker_info) > 0 else {}
-        except Exception as e:
-            logger.warning(f"Error getting ticker information for {symbol}: {e}")
-            symbol_info = {}
+        if symbol in symbol_cache:
+            symbol_info, quote = symbol_cache[symbol]
+        else:
+            try:
+                ticker_info = client.ticker_information([symbol])
+                symbol_info = ticker_info[0] if ticker_info and len(ticker_info) > 0 else {}
+            except Exception as e:
+                logger.warning(f"Error getting ticker information for {symbol}: {e}")
+                symbol_info = {}
 
-        try:
-            quotes = client.get_quote([symbol])
-            quote = quotes[0] if isinstance(quotes, list) and quotes else {}
-        except Exception as e:
-            logger.warning(f"Error getting quote for {symbol}: {e}")
-            quote = {}
+            try:
+                quotes = client.get_quote([symbol])
+                quote = quotes[0] if isinstance(quotes, list) and quotes else {}
+            except Exception as e:
+                logger.warning(f"Error getting quote for {symbol}: {e}")
+                quote = {}
+
+            symbol_cache[symbol] = (symbol_info, quote)
 
         try:
             current_price = position.get("currentPrice") or quote.get("lastTradePrice", 0.0)
@@ -117,9 +133,13 @@ def get_account_positions(client: Questrade, account_id: str) -> Dict[str, Any]:
     }
 
 
-def get_all_account_positions(client: Questrade) -> List[Dict[str, Any]]:
+def get_all_account_positions(
+    client: Questrade, symbol_cache: Optional[Dict[str, Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
     """Get positions for all accounts the user has access to."""
     logger.info("Retrieving positions for all accounts")
+    if symbol_cache is None:
+        symbol_cache = {}
 
     try:
         accounts = get_account_list(client)
@@ -136,7 +156,7 @@ def get_all_account_positions(client: Questrade) -> List[Dict[str, Any]]:
             continue
 
         try:
-            positions = get_account_positions(client, account_id)
+            positions = get_account_positions(client, account_id, symbol_cache=symbol_cache)
             if positions and positions["holdings"]:
                 all_positions.append(positions)
                 logger.info(f"Added account {account_id} with {len(positions['holdings'])} holdings")
@@ -150,10 +170,11 @@ def get_all_account_positions(client: Questrade) -> List[Dict[str, Any]]:
 
 def get_all_account_positions_multi(clients: List[Questrade]) -> List[Dict[str, Any]]:
     """Get positions for every account across multiple Questrade logins."""
+    symbol_cache: Dict[str, Dict[str, Any]] = {}
     all_positions: List[Dict[str, Any]] = []
     for i, client in enumerate(clients):
         try:
-            all_positions.extend(get_all_account_positions(client))
+            all_positions.extend(get_all_account_positions(client, symbol_cache=symbol_cache))
         except Exception as e:
             logger.error(f"Error retrieving positions for client index {i}: {e}")
     return all_positions
@@ -166,13 +187,23 @@ def get_holdings_dict(holding: Dict[str, Any]) -> Dict[str, Any]:
     return holding
 
 
-def _gather_account_positions(client, account_ids):
+def _gather_account_positions(client, account_ids, symbol_cache=None):
     """Fetch positions for a list of account IDs on one client. Uses a thread
-    pool when there's more than one account, sequential otherwise."""
+    pool when there's more than one account, sequential otherwise.
+
+    `symbol_cache` is shared across all accounts (and threads) so a symbol
+    held in multiple accounts only triggers one ticker_information/get_quote
+    call — concurrent cache misses on the same symbol just mean a small
+    amount of duplicated work, not a correctness issue, since dict writes
+    are atomic under the GIL.
+    """
+    if symbol_cache is None:
+        symbol_cache = {}
+
     if len(account_ids) > 1:
         def get_positions_safe(account_id):
             try:
-                return get_account_positions(client, account_id)
+                return get_account_positions(client, account_id, symbol_cache=symbol_cache)
             except Exception as e:
                 logger.error(f"Error retrieving positions for account {account_id}: {e}")
                 return None
@@ -184,7 +215,7 @@ def _gather_account_positions(client, account_ids):
     all_positions = []
     for account_id in account_ids:
         try:
-            all_positions.append(get_account_positions(client, account_id))
+            all_positions.append(get_account_positions(client, account_id, symbol_cache=symbol_cache))
         except Exception as e:
             logger.error(f"Error retrieving positions for account {account_id}: {e}")
     return all_positions
@@ -308,6 +339,7 @@ def get_all_accounts_holdings_multi(
     if not clients:
         raise ValueError("get_all_accounts_holdings_multi requires at least one client")
 
+    symbol_cache: Dict[str, Dict[str, Any]] = {}
     all_positions = []
     quote_client_account_ids: List[int] = []
     for i, client in enumerate(clients):
@@ -320,7 +352,7 @@ def get_all_accounts_holdings_multi(
                     client.cached_account_ids = account_ids
             if i == 0:
                 quote_client_account_ids = list(account_ids)
-            all_positions.extend(_gather_account_positions(client, account_ids))
+            all_positions.extend(_gather_account_positions(client, account_ids, symbol_cache=symbol_cache))
         except Exception as e:
             logger.error(f"Error gathering holdings for client index {i}: {e}")
 

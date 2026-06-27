@@ -63,8 +63,15 @@ async def test_process_request_success_path():
 
 @pytest.mark.asyncio
 async def test_get_accounts_dedups_across_clients():
-    client_a = type("C", (), {"get_accounts": lambda self: {"accounts": [{"number": "1"}, {"number": "2"}]}})()
-    client_b = type("C", (), {"get_accounts": lambda self: {"accounts": [{"number": "2"}, {"number": "3"}]}})()
+    """qtrade's Questrade client exposes get_account_id() (a plain list of
+    account ID strings/ints), not a get_accounts() method — confirmed live,
+    where a get_accounts() call raised AttributeError and the handler's
+    except-and-warn fallback silently returned []. _get_accounts must go
+    through the already-correct app.providers._questrade_internal.holdings
+    .get_account_list() helper, which wraps get_account_id() into the right
+    dict shape."""
+    client_a = type("C", (), {"get_account_id": lambda self: ["1", "2"]})()
+    client_b = type("C", (), {"get_account_id": lambda self: ["2", "3"]})()
 
     with patch("app.mcp.handler.get_questrade_clients", return_value=[client_a, client_b]):
         handler = MCPHandler()
