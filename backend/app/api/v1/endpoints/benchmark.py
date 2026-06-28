@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.api.v1.schemas.common import BenchmarkData
-from app.services.external_api import load_performance, get_portfolio_metrics
+from app.services.holdings_service import load_performance, get_portfolio_metrics
 from app.services.benchmark_service import calculate_normalized_benchmark_data
 
 router = APIRouter(prefix="/benchmark", tags=["benchmark"])

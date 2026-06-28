@@ -1,25 +1,37 @@
 # scripts/
 
-## `test_upstream_connectivity.sh`
+## `deploy.sh`
 
-Run on the NAS when the frontend shows "Failed to load the allocation data" or
-the backend API returns `503 {"detail":"Unable to fetch holdings data"}`. It
-execs into the running `portfolio-backend` container and makes the same
-request the backend itself would make to `EXTERNAL_API_URL`, isolating
-whether the failure is upstream connectivity (this script) vs. the
-tunnel/CORS/frontend layer.
+Build images and (re)start all three containers (backend, frontend, cloudflared).
+Run from the repo root:
 
 ```bash
-cd /path/to/portfolio-dashboard   # wherever you cloned it on the NAS
+sh scripts/deploy.sh
+```
+
+On the NAS (where Docker requires sudo):
+
+```bash
+DOCKER="sudo docker" sh scripts/deploy.sh
+```
+
+Requires a `.env` file at the repo root with:
+- `QUESTRADE_REFRESH_TOKEN`
+- `CORS_ORIGINS` (JSON array string, e.g. `["https://app.yourdomain.com"]`)
+- `VITE_API_URL`
+- `TUNNEL_TOKEN`
+
+## `test_upstream_connectivity.sh`
+
+Diagnose a non-responding backend by checking the health endpoint and testing
+Questrade auth from inside the running `portfolio-backend` container.
+
+```bash
 sh scripts/test_upstream_connectivity.sh
 ```
 
-Reads `EXTERNAL_API_URL` from the repo's `.env`. Pass a URL explicitly to
-override:
+On the NAS:
 
 ```bash
-sh scripts/test_upstream_connectivity.sh https://your-ngrok-url.ngrok-free.app
+DOCKER="sudo docker" sh scripts/test_upstream_connectivity.sh
 ```
-
-Requires the `portfolio-backend` container to already be running
-(`sudo docker compose up -d`).

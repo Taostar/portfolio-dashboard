@@ -19,4 +19,5 @@ class HoldingItem(BaseModel):
 
 class HoldingsResponse(BaseModel):
     holdings: list[HoldingItem]
+    options: list[HoldingItem] = []
     prev_day_change_pct: Optional[float] = None

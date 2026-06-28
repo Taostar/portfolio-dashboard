@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.api.v1.schemas.common import CandlestickData
-from app.services.external_api import load_performance
+from app.services.holdings_service import load_performance
 
 router = APIRouter(prefix="/performance", tags=["performance"])
 

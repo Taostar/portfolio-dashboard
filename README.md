@@ -5,17 +5,19 @@ A portfolio visualization dashboard with a React/TypeScript frontend and a FastA
 ## Architecture
 
 ```
-External API (ngrok)
-    ├── /accounts/holdings  → portfolio holdings & metrics
-    └── /market/data        → historical OHLCV price data
+Questrade API (direct, via qtrade)
+    └── account holdings, positions, quotes
+yfinance
+    └── historical OHLCV price data
             ↓
     FastAPI Backend (backend/)
         ├── /api/v1/portfolio   → portfolio overview & metrics
-        ├── /api/v1/holdings    → current holdings table
+        ├── /api/v1/holdings    → current holdings table (stocks/ETFs + options split)
         ├── /api/v1/correlation → correlation matrix
         ├── /api/v1/exchange    → exchange rates (USD/CAD, CAD/CNY, BTC/USD)
         ├── /api/v1/benchmark   → benchmark comparison
-        └── /api/v1/performance → individual asset candlestick data
+        ├── /api/v1/performance → individual asset candlestick data
+        └── /api/v1/mcp        → MCP interface for AI agents
             ↓
     React Frontend (frontend/)
         └── Vite + React 19 + TailwindCSS + Plotly.js dashboard
@@ -69,8 +71,9 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Configure the external API URL (optional — defaults to the ngrok URL in config.py)
-echo "EXTERNAL_API_URL=https://your-ngrok-url.ngrok-free.app" > .env
+# Configure Questrade credentials
+echo "QUESTRADE_REFRESH_TOKEN=your-refresh-token" > .env
+echo "QUESTRADE_TOKEN_DIR=/data/questrade_tokens" >> .env  # optional, defaults to /data/questrade_tokens
 
 # Start the server
 uvicorn app.main:app --reload --port 8000
@@ -99,15 +102,16 @@ Opens at `http://localhost:5173`.
 
 | Location | Variable | Default | Description |
 |---|---|---|---|
-| `backend/.env` | `EXTERNAL_API_URL` | ngrok URL | The external portfolio data API |
-| `backend/.env` | `CORS_ORIGINS` | `localhost:5173,3000` | Allowed frontend origins |
+| `backend/.env` | `QUESTRADE_REFRESH_TOKEN` | *(required)* | Questrade OAuth refresh token |
+| `backend/.env` | `QUESTRADE_TOKEN_DIR` | `/data/questrade_tokens` | Directory for cached Questrade tokens |
+| `backend/.env` | `CORS_ORIGINS` | `localhost:5173,3000` | Allowed frontend origins (JSON array string) |
 | `frontend/.env` | `VITE_API_URL` | `http://localhost:8000/api/v1` | Backend API base URL |
 
 ## Dashboard Sections
 
 - **Portfolio Overview** — total market value (CAD), cumulative return, Sharpe ratio, daily return
 - **Asset Allocation** — pie chart of portfolio weights
-- **Current Holdings** — sortable holdings table with market values and currencies
+- **Current Holdings** — sortable holdings tables: Stocks & ETFs, and Options (when present)
 - **Holdings Bar Chart** — bar chart of position sizes
 - **Correlation Matrix** — heatmap of pairwise asset correlations
 - **Exchange Rates** — USD/CAD, CAD/CNY, USD/CNY, BTC/USD live rates

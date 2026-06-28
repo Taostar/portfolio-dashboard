@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from app.api.v1.schemas.common import CorrelationMatrix
-from app.services.external_api import get_holdings_dataframe, load_performance
+from app.services.holdings_service import get_holdings_dataframe, load_performance
 from app.services.correlation_service import (
     calculate_portfolio_correlation,
     correlation_matrix_to_json,

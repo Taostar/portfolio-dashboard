@@ -37,6 +37,7 @@ export interface HoldingItem {
 
 export interface HoldingsResponse {
   holdings: HoldingItem[];
+  options: HoldingItem[];
   prev_day_change_pct: number | null;
 }
 
@@ -70,4 +71,16 @@ export interface CandlestickData {
   low: number[];
   close: number[];
   volume: number[];
+}
+
+export interface ManualHolding {
+  symbol: string;
+  currency: string;
+  quantity: number;
+  open_quantity: number;
+  average_entry_price: number;
+}
+
+export interface ManualHoldingsConfig {
+  holdings: ManualHolding[];
 }
