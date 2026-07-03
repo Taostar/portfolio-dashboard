@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from utils import fetch_portfolio_data, load_performance, API_URL, calculate_portfolio_correlation, calculate_market_value_changes
+from utils import fetch_portfolio_data, load_performance, API_URL, calculate_portfolio_correlation, calculate_market_value_changes, fetch_ema_indicators
 from datetime import datetime, timedelta
 import os
 
@@ -84,6 +84,9 @@ if portfolio_metrics_data:
 col1, col2, col3, col4 = st.columns(4)
 correlation_matrix, weighted_corr_matrix, portfolio_weighted_corr = calculate_portfolio_correlation(holdings_df, performance_df)
 holdings_df, prev_day_change_percentage = calculate_market_value_changes(holdings_df, performance_df)
+ema_data = fetch_ema_indicators(holdings_df['symbol'].tolist())
+holdings_df['21M EMA'] = holdings_df['symbol'].map(lambda s: ema_data.get(s, {}).get('ema_21m'))
+holdings_df['21Q EMA'] = holdings_df['symbol'].map(lambda s: ema_data.get(s, {}).get('ema_21q'))
 col1.metric("Portfolio Weighted Correlation", f"{portfolio_weighted_corr:.2f}")
 col2.metric("Previous Day Change", f"{prev_day_change_percentage:.2%}")
 
@@ -111,6 +114,7 @@ if not holdings_df.empty:
     display_df = holdings_df[[
         'symbol', 'quantity', 'current_price',
         'current_market_value', 'currency', 'percentage',
+        '21M EMA', '21Q EMA',
         'Market Value 1 Day (%)', 'Market Value 1 WK (%)', 'Market Value 1 Month (%)',
         'Market Value 6 Months (%)', 'Market Value 1 Year (%)'
     ]].copy()
@@ -123,7 +127,9 @@ if not holdings_df.empty:
         'current_price': 'Current Price',
         'current_market_value': 'Market Value',
         'percentage': 'Portfolio %',
-        'Market Value 1 Day (%)': '1 Day (%)', 
+        '21M EMA': '21M EMA',
+        '21Q EMA': '21Q EMA',
+        'Market Value 1 Day (%)': '1 Day (%)',
         'Market Value 1 WK (%)': '1 WK (%)',
         'Market Value 1 Month (%)': '1 Month (%)',
         'Market Value 6 Months (%)': '6 Months (%)', 
@@ -139,11 +145,28 @@ if not holdings_df.empty:
         'Market Value': '{:,.2f}',
         'Portfolio %': '{:.2f}%',
     }
+    formatters['21M EMA'] = '{:,.2f}'
+    formatters['21Q EMA'] = '{:,.2f}'
     for col in market_value_cols:
         formatters[col] = '{:.2%}'
 
+    def style_ema_cell(row):
+        """Color 21M EMA and 21Q EMA cells: red if current price < EMA, green if above."""
+        styles = pd.Series('', index=row.index)
+        current_price = row.get('Current Price')
+        for ema_col in ['21M EMA', '21Q EMA']:
+            ema_val = row.get(ema_col)
+            if pd.notna(ema_val) and pd.notna(current_price):
+                if float(current_price) < float(ema_val):
+                    styles[ema_col] = 'color: #8B0000'  # dark red — price below EMA
+                else:
+                    styles[ema_col] = 'color: #006400'  # dark green — price above EMA
+        return styles
+
     styled_df = display_df.style.applymap(
         color_change, subset=market_value_cols
+    ).apply(
+        style_ema_cell, axis=1
     ).format(formatters, na_rep='N/A')
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 else:
