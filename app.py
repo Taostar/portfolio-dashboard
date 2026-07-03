@@ -50,6 +50,29 @@ def color_change(val):
             color = '#FFA07A'  # Light red
     return f'color: {color}'
 
+@st.cache_data(ttl=86400)
+def load_vix_data():
+    """Fetch 1 year of daily VIX closes from yfinance. Returns DataFrame with Date and Close columns."""
+    import yfinance as yf
+    try:
+        data = yf.download("^VIX", period="1y", interval="1d", progress=False, auto_adjust=True)
+        if data.empty:
+            return pd.DataFrame()
+        result = pd.DataFrame()
+        result['Date'] = data.index
+        if isinstance(data.columns, pd.MultiIndex):
+            close_cols = [col for col in data.columns if col[0] == 'Close']
+            if not close_cols:
+                return pd.DataFrame()
+            result['Close'] = data[close_cols[0]].values
+        else:
+            if 'Close' not in data.columns:
+                return pd.DataFrame()
+            result['Close'] = data['Close'].values
+        return result.dropna(subset=['Close']).reset_index(drop=True)
+    except Exception:
+        return pd.DataFrame()
+
 # --- Sidebar for Data Source Info (Optional) ---
 st.sidebar.header("Data Sources")
 st.sidebar.markdown(f"**Holdings ngrok endpoint:** `{API_URL}/accounts/holdings` & `{API_URL}/market/data`")
@@ -89,6 +112,50 @@ holdings_df['21M EMA'] = holdings_df['symbol'].map(lambda s: ema_data.get(s, {})
 holdings_df['21Q EMA'] = holdings_df['symbol'].map(lambda s: ema_data.get(s, {}).get('ema_21q'))
 col1.metric("Portfolio Weighted Correlation", f"{portfolio_weighted_corr:.2f}")
 col2.metric("Previous Day Change", f"{prev_day_change_percentage:.2%}")
+
+# VIX market mood
+vix_df = load_vix_data()
+if not vix_df.empty:
+    current_vix = float(vix_df['Close'].iloc[-1])
+    if current_vix < 20:
+        vix_zone = "Calm"
+    elif current_vix < 30:
+        vix_zone = "Elevated Fear"
+    elif current_vix < 40:
+        vix_zone = "High Fear"
+    else:
+        vix_zone = "Extreme Fear"
+
+    col_vix_metric, col_vix_chart = st.columns([1, 5])
+    with col_vix_metric:
+        st.metric("VIX", f"{current_vix:.2f}")
+        st.caption(vix_zone)
+    with col_vix_chart:
+        fig_vix = go.Figure()
+        fig_vix.add_trace(go.Scatter(
+            x=vix_df['Date'], y=vix_df['Close'],
+            mode='lines', name='VIX',
+            line=dict(color='#1f77b4', width=1.5)
+        ))
+        fig_vix.add_hrect(y0=0, y1=20, fillcolor="green", opacity=0.05, line_width=0)
+        fig_vix.add_hrect(y0=20, y1=30, fillcolor="yellow", opacity=0.08, line_width=0)
+        fig_vix.add_hrect(y0=30, y1=100, fillcolor="red", opacity=0.05, line_width=0)
+        fig_vix.add_hline(y=20, line_dash="dot", line_color="orange",
+                           annotation_text="Elevated (20)", annotation_position="top right")
+        fig_vix.add_hline(y=30, line_dash="dash", line_color="darkorange",
+                           annotation_text="High Fear (30)", annotation_position="top right")
+        fig_vix.add_hline(y=40, line_color="red",
+                           annotation_text="Extreme (40)", annotation_position="top right")
+        fig_vix.update_layout(
+            title="CBOE Volatility Index (VIX) — Market Mood",
+            height=300,
+            yaxis_title="VIX",
+            showlegend=False,
+            margin=dict(l=0, r=120, t=40, b=20)
+        )
+        st.plotly_chart(fig_vix, use_container_width=True)
+else:
+    st.warning("VIX data unavailable — check internet connection.")
 
 if not holdings_df.empty:
     st.subheader("Asset Allocation (CAD Market Value)")
