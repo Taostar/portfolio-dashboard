@@ -6,6 +6,61 @@ import os
 import re
 from datetime import datetime
 
+
+def _compute_ema_last_value(df: pd.DataFrame, span: int = 21):
+    """
+    Extract Close from a yfinance DataFrame (regular or MultiIndex columns),
+    compute EMA(span), and return the last value as float.
+    Returns None if the DataFrame is empty or has fewer than `span` rows.
+    """
+    if df is None or df.empty:
+        return None
+    if isinstance(df.columns, pd.MultiIndex):
+        close_cols = [col for col in df.columns if col[0] == "Close"]
+        if not close_cols:
+            return None
+        close = df[close_cols[0]]
+    else:
+        if "Close" not in df.columns:
+            return None
+        close = df["Close"]
+    close = pd.to_numeric(close, errors="coerce").dropna()
+    if len(close) < span:
+        return None
+    ema = close.ewm(span=span, adjust=False).mean()
+    return float(ema.iloc[-1])
+
+
+@st.cache_data(ttl=86400)
+def fetch_ema_indicators(symbols: list) -> dict:
+    """
+    Fetch EMA(21) on monthly and quarterly candles for each symbol via yfinance.
+    Returns {symbol: {"ema_21m": float|None, "ema_21q": float|None}}.
+    Cached for 1 day. Per-symbol failures return None, never raise.
+    """
+    import yfinance as yf
+    result = {}
+    for symbol in symbols:
+        ema_21m = None
+        ema_21q = None
+        try:
+            monthly = yf.download(
+                symbol, period="3y", interval="1mo", progress=False, auto_adjust=True
+            )
+            ema_21m = _compute_ema_last_value(monthly, span=21)
+        except Exception:
+            pass
+        try:
+            quarterly = yf.download(
+                symbol, period="10y", interval="3mo", progress=False, auto_adjust=True
+            )
+            ema_21q = _compute_ema_last_value(quarterly, span=21)
+        except Exception:
+            pass
+        result[symbol] = {"ema_21m": ema_21m, "ema_21q": ema_21q}
+    return result
+
+
 # --- Configuration Loading ---
 def load_config():
     """Loads configuration from config.json."""
