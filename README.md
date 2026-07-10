@@ -53,6 +53,11 @@ yfinance
 │   │   ├── types/portfolio.ts
 │   │   └── utils/               # formatters, colorUtils
 │   └── package.json
+├── docker-compose.yml           # Production stack: backend + frontend + cloudflared
+├── .env.example                 # Template for deployment environment variables
+├── scripts/
+│   ├── deploy.sh                # Build & (re)start the production stack
+│   └── test_upstream_connectivity.sh  # Diagnose backend/Questrade connectivity
 ├── config.json                  # Legacy: ngrok API_URL (used by old Streamlit app)
 └── requirements.txt             # Legacy: Streamlit dependencies
 ```
@@ -106,6 +111,83 @@ Opens at `http://localhost:5173`.
 | `backend/.env` | `QUESTRADE_TOKEN_DIR` | `/data/questrade_tokens` | Directory for cached Questrade tokens |
 | `backend/.env` | `CORS_ORIGINS` | `localhost:5173,3000` | Allowed frontend origins (JSON array string) |
 | `frontend/.env` | `VITE_API_URL` | `http://localhost:8000/api/v1` | Backend API base URL |
+
+## Deployment
+
+Production runs as three Docker containers defined in `docker-compose.yml`:
+
+| Service | Image | Role |
+|---|---|---|
+| `backend` | built from `backend/Dockerfile` | FastAPI + Uvicorn on internal port 8000 |
+| `frontend` | built from `frontend/Dockerfile` | Vite production build served by nginx on internal port 80 |
+| `cloudflared` | `cloudflare/cloudflared:latest` | Cloudflare Tunnel exposing both services to the internet |
+
+No ports are published on the host — the services talk over the internal `portfolio-net` network, and all public traffic enters through the Cloudflare Tunnel. Named volumes persist Questrade tokens (`questrade-tokens`) and the manual holdings config (`manual-holdings-config`) across restarts.
+
+### Prerequisites
+
+- Docker Engine with the Compose plugin (`docker compose version` must work)
+- A Questrade OAuth refresh token
+- A Cloudflare Zero Trust tunnel with its connector token, and two public hostnames routed to the internal services:
+  - `app.yourdomain.com` → `http://frontend:80`
+  - `api.yourdomain.com` → `http://backend:8000`
+
+  (configured under Zero Trust → Networks → Tunnels → your tunnel → Public Hostname)
+
+### Deploy
+
+```bash
+# 1. Create the environment file at the repo root
+cp .env.example .env
+# Edit .env and fill in all four values (see table below)
+
+# 2. Build and start everything
+sh scripts/deploy.sh
+```
+
+`deploy.sh` pulls the latest code, builds both images, restarts the containers, and waits for the backend `/health` endpoint to respond. On hosts where Docker needs sudo (e.g. a NAS):
+
+```bash
+DOCKER="sudo docker" sh scripts/deploy.sh
+```
+
+To run the steps manually instead:
+
+```bash
+docker compose build --pull
+docker compose up -d --remove-orphans
+```
+
+### Deployment environment variables (root `.env`)
+
+| Variable | Example | Description |
+|---|---|---|
+| `QUESTRADE_REFRESH_TOKEN` | `abc123...` | Questrade OAuth refresh token |
+| `CORS_ORIGINS` | `["https://app.yourdomain.com"]` | Allowed frontend origins — must be a JSON array string |
+| `VITE_API_URL` | `https://api.yourdomain.com/api/v1` | Public backend URL, baked into the frontend at **build time** — changing it requires rebuilding the frontend image |
+| `TUNNEL_TOKEN` | `eyJh...` | Cloudflare Tunnel connector token (token value only, not the full `docker run` command) |
+
+### Verify & troubleshoot
+
+```bash
+# Container status
+docker compose ps
+
+# Backend health from inside the container
+docker compose exec backend wget -qO- http://localhost:8000/health
+
+# Full diagnostic: health endpoint + Questrade auth from inside the backend container
+sh scripts/test_upstream_connectivity.sh
+
+# Logs
+docker compose logs -f backend
+```
+
+For quick LAN testing without the tunnel, uncomment the `ports:` mappings in `docker-compose.yml` (`8000:8000` for the backend, `8080:80` for the frontend) and browse to `http://<host>:8080`.
+
+### Updating a running deployment
+
+Re-run `sh scripts/deploy.sh` — it pulls the latest code, rebuilds, and restarts with a health check. Questrade tokens and the manual holdings config live in named volumes, so they survive rebuilds.
 
 ## Dashboard Sections
 
