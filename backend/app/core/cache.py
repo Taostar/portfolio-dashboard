@@ -12,6 +12,8 @@ _performance_cache = TTLCache(maxsize=100, ttl=3600)  # 1 hour
 _correlation_cache = TTLCache(maxsize=100, ttl=3600)  # 1 hour
 _exchange_cache = TTLCache(maxsize=100, ttl=86400)  # 1 day
 _benchmark_cache = TTLCache(maxsize=100, ttl=86400)  # 1 day
+_ema_cache = TTLCache(maxsize=100, ttl=86400)  # 1 day — monthly/quarterly candles move slowly
+_vix_cache = TTLCache(maxsize=10, ttl=86400)  # 1 day
 
 # Per-key locks so concurrent cache misses (e.g. a page load firing several
 # requests at once) share one in-flight upstream call instead of each firing
@@ -48,6 +50,8 @@ def cached(cache_type: str = "holdings"):
         "correlation": _correlation_cache,
         "exchange": _exchange_cache,
         "benchmark": _benchmark_cache,
+        "ema": _ema_cache,
+        "vix": _vix_cache,
     }
 
     def decorator(func: Callable) -> Callable:
@@ -95,6 +99,8 @@ def clear_cache(cache_type: str = None):
         "correlation": _correlation_cache,
         "exchange": _exchange_cache,
         "benchmark": _benchmark_cache,
+        "ema": _ema_cache,
+        "vix": _vix_cache,
     }
 
     if cache_type:

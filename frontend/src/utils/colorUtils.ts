@@ -17,6 +17,18 @@ export const getReturnColor = (value: number | null): string => {
 };
 
 /**
+ * Color an EMA cell relative to the current price:
+ * dark red when the price is below the EMA, dark green when above.
+ */
+export const getPriceVsEmaColor = (
+  price: number,
+  ema: number | null
+): string => {
+  if (ema === null) return 'inherit';
+  return price < ema ? '#8B0000' : '#006400';
+};
+
+/**
  * Get Tailwind class for return value
  */
 export const getReturnColorClass = (value: number | null): string => {

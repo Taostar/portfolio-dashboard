@@ -72,11 +72,19 @@ def _performance_df():
     return pd.DataFrame(rows)
 
 
+def _ema_map():
+    return {
+        "AAPL": {"ema_21m": 140.0, "ema_21q": 120.0},
+        "MSFT": {"ema_21m": 310.0, "ema_21q": 280.0},
+    }
+
+
 def _mock_io():
     return patch.multiple(
         "app.api.v1.endpoints.holdings",
         get_holdings_dataframe=AsyncMock(return_value=_holdings_df()),
         load_performance=AsyncMock(return_value=_performance_df()),
+        fetch_ema_indicators=lambda symbols: _ema_map(),
     )
 
 
@@ -92,6 +100,23 @@ def test_get_holdings_splits_stocks_and_options():
 
     assert holdings_symbols == {"AAPL", "MSFT"}
     assert options_symbols == {"NVDA10Jul26P180.00"}
+
+
+def test_get_holdings_includes_ema_indicators():
+    with _mock_io():
+        response = client.get("/api/v1/holdings")
+
+    assert response.status_code == 200
+    body = response.json()
+
+    aapl = next(h for h in body["holdings"] if h["symbol"] == "AAPL")
+    assert aapl["ema_21m"] == 140.0
+    assert aapl["ema_21q"] == 120.0
+
+    # Options carry no EMA data.
+    option = body["options"][0]
+    assert option["ema_21m"] is None
+    assert option["ema_21q"] is None
 
 
 def test_get_holdings_serializes_when_one_symbol_has_no_performance_data():
@@ -121,6 +146,7 @@ def test_get_holdings_serializes_when_one_symbol_has_no_performance_data():
         "app.api.v1.endpoints.holdings",
         get_holdings_dataframe=AsyncMock(return_value=holdings_df),
         load_performance=AsyncMock(return_value=_performance_df()),
+        fetch_ema_indicators=lambda symbols: _ema_map(),
     ):
         response = client.get("/api/v1/holdings")
 
@@ -141,6 +167,7 @@ def test_get_top_holdings_excludes_options_even_with_higher_value():
         "app.api.v1.endpoints.holdings",
         get_holdings_dataframe=AsyncMock(return_value=df),
         load_performance=AsyncMock(return_value=_performance_df()),
+        fetch_ema_indicators=lambda symbols: _ema_map(),
     ):
         response = client.get("/api/v1/holdings/top/2")
 

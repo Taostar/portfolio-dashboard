@@ -65,6 +65,14 @@ export const useExchangeRate = (pair: string) => {
   });
 };
 
+export const useVix = () => {
+  return useQuery({
+    queryKey: ['market', 'vix'],
+    queryFn: portfolioApi.getVix,
+    staleTime: CACHE_1_DAY,
+  });
+};
+
 export const useBenchmarkComparison = () => {
   return useQuery({
     queryKey: ['benchmark', 'comparison'],

@@ -1,7 +1,11 @@
+import asyncio
+from typing import Optional
+
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from app.api.v1.schemas.holdings import HoldingsResponse, HoldingItem
 from app.providers.classifier import split_holdings
+from app.services.ema_service import fetch_ema_indicators
 from app.services.holdings_service import get_holdings_dataframe, load_performance
 from app.services.market_value_service import calculate_market_value_changes
 
@@ -16,9 +20,11 @@ def _none_if_nan(value):
     return None if pd.isna(value) else value
 
 
-def _build_holding_items(df) -> list[HoldingItem]:
+def _build_holding_items(df, ema_map: Optional[dict] = None) -> list[HoldingItem]:
+    ema_map = ema_map or {}
     items = []
     for _, row in df.iterrows():
+        ema = ema_map.get(row.get("symbol", ""), {})
         items.append(
             HoldingItem(
                 symbol=row.get("symbol", ""),
@@ -28,6 +34,8 @@ def _build_holding_items(df) -> list[HoldingItem]:
                 market_value=float(row.get("current_market_value", 0)),
                 market_value_cad=float(row.get("current_market_value_CAD", 0)),
                 portfolio_pct=float(row.get("percentage", 0)),
+                ema_21m=ema.get("ema_21m"),
+                ema_21q=ema.get("ema_21q"),
                 change_1d=_none_if_nan(row.get("change_1d")),
                 change_1w=_none_if_nan(row.get("change_1w")),
                 change_1m=_none_if_nan(row.get("change_1m")),
@@ -57,7 +65,13 @@ async def get_holdings():
     )
     updated_options_df, _ = calculate_market_value_changes(options_df, performance_df)
 
-    holdings = _build_holding_items(updated_stocks_etfs_df)
+    # EMA indicators only apply to stocks/ETFs — option contracts aren't
+    # yfinance tickers. Runs in a thread: yfinance is blocking and the
+    # first uncached call downloads two candle batches.
+    symbols = tuple(sorted(updated_stocks_etfs_df.get("symbol", pd.Series(dtype=str))))
+    ema_map = await asyncio.to_thread(fetch_ema_indicators, symbols)
+
+    holdings = _build_holding_items(updated_stocks_etfs_df, ema_map)
     options = _build_holding_items(updated_options_df)
 
     return HoldingsResponse(
