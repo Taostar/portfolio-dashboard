@@ -55,11 +55,9 @@ yfinance
 │   └── package.json
 ├── docker-compose.yml           # Production stack: backend + frontend + cloudflared
 ├── .env.example                 # Template for deployment environment variables
-├── scripts/
-│   ├── deploy.sh                # Build & (re)start the production stack
-│   └── test_upstream_connectivity.sh  # Diagnose backend/Questrade connectivity
-├── config.json                  # Legacy: ngrok API_URL (used by old Streamlit app)
-└── requirements.txt             # Legacy: Streamlit dependencies
+└── scripts/
+    ├── deploy.sh                # Build & (re)start the production stack
+    └── test_upstream_connectivity.sh  # Diagnose backend/Questrade connectivity
 ```
 
 ## Setup

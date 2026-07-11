@@ -1,6 +1,6 @@
 /**
  * Get color for return value based on intensity.
- * Matches the Streamlit color_change function from app.py:25-48
+ * Green gradient for gains, red gradient for losses.
  */
 export const getReturnColor = (value: number | null): string => {
   if (value === null || value === 0) return 'inherit';
@@ -34,8 +34,7 @@ export const getReturnColorClass = (value: number | null): string => {
 };
 
 /**
- * Custom colorscale for correlation heatmap
- * Matches the Streamlit custom colormap from app.py:184-185
+ * Custom colorscale for correlation heatmap (RdBu-style, blue = -1, red = +1)
  */
 export const CORRELATION_COLORSCALE: [number, string][] = [
   [0, '#053061'],     // Dark blue (-1)

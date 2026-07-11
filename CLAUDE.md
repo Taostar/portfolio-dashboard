@@ -4,66 +4,71 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
+### Backend (FastAPI)
+
 ```bash
-# Install dependencies
+cd backend
+
+# Install dependencies (use a virtualenv)
 pip install -r requirements.txt
 
-# Run the application
-streamlit run app.py
+# Run the dev server
+uvicorn app.main:app --reload --port 8000
 
-# Run on a specific port
-streamlit run app.py --server.port 8502
-
-# Run with Dev Container settings (disables CORS/XSRF for local dev)
-streamlit run app.py --server.enableCORS false --server.enableXsrfProtection false
+# Run tests
+python -m pytest tests/
 ```
+
+API docs at `http://localhost:8000/docs`.
+
+### Frontend (React + Vite)
+
+```bash
+cd frontend
+
+npm install
+npm run dev        # dev server at http://localhost:5173
+npm run build      # tsc -b + vite build (strict type-check; must pass before deploy)
+npm run lint
+```
+
+### Deployment (Docker + Cloudflare Tunnel)
+
+```bash
+cp .env.example .env   # fill in QUESTRADE_REFRESH_TOKEN, CORS_ORIGINS, VITE_API_URL, TUNNEL_TOKEN
+sh scripts/deploy.sh   # NAS (Docker needs sudo): DOCKER="sudo docker" sh scripts/deploy.sh
+```
+
+See the README "Deployment" section for details. `Agent.md` is a historical deployment log.
 
 ## Architecture
 
-This is a Streamlit portfolio visualization dashboard that displays stock/ETF holdings and performance analytics.
-
-### Data Flow
-
 ```
-Backend API (ngrok)
-    ├── /accounts/holdings → Portfolio holdings & metrics
-    └── /market/data       → Historical OHLCV price data
+Questrade API (direct, via token refresh)      yfinance (historical OHLCV, FX)
+            ↓                                        ↓
+    FastAPI Backend (backend/) — all routes under /api/v1
             ↓
-      utils.py (data processing & caching)
-            ↓
-      app.py (Streamlit dashboard)
+    React Frontend (frontend/) — Vite + React 19 + TailwindCSS + Plotly.js
 ```
 
-### Key Files
+- **backend/app/providers/**: data providers — `questrade.py` (auth, holdings, quotes via refresh-token flow), `base.py`, `classifier.py` (stock/ETF vs option split)
+- **backend/app/services/**: business logic — holdings, correlation, benchmark, exchange, market value, manual holdings (YAML-configured accounts not reachable via Questrade)
+- **backend/app/api/v1/**: routers (`endpoints/`) and Pydantic schemas (`schemas/`); includes an MCP interface at `/api/v1/mcp` for AI agents
+- **backend/app/core/cache.py**: caching layer; TTLs configured in `app/config.py`
+- **frontend/src/**: `pages/Dashboard.tsx` composes section components (`components/sections/`), which use TanStack Query hooks (`hooks/`) over an Axios client (`api/`); charts are Plotly (`components/charts/`), tables TanStack Table (`components/tables/`)
 
-- **app.py**: Main Streamlit application with all dashboard sections (overview metrics, allocation pie chart, holdings table, correlation heatmap, exchange rates, benchmark comparison, candlestick charts)
-- **utils.py**: Data fetching and processing functions with Streamlit caching decorators
-- **config.json**: Contains `API_URL` for the backend endpoint (ngrok URL)
+## Configuration
 
-### Caching Strategy
+| Location | Variable | Notes |
+|---|---|---|
+| `backend/.env` | `QUESTRADE_REFRESH_TOKEN` | required |
+| `backend/.env` | `QUESTRADE_TOKEN_DIR` | default `/data/questrade_tokens` |
+| `backend/.env` | `CORS_ORIGINS` | must be a JSON array string (pydantic-settings `list[str]`) |
+| `frontend/.env` | `VITE_API_URL` | default `http://localhost:8000/api/v1`; baked in at build time |
+| root `.env` | all of the above + `TUNNEL_TOKEN` | used only by `docker-compose.yml` / `scripts/deploy.sh` |
 
-All data functions use `@st.cache_data()` with different TTLs:
-- `fetch_portfolio_data()`: 5 minutes (holdings change frequently)
-- `load_performance()`: 1 hour (historical data)
-- `calculate_portfolio_correlation()`: 1 hour
-- `calculate_market_value_changes()`: 1 hour
-- Exchange rate data: 1 day
-- Correlation heatmap figure: 1 hour
+## Notes
 
-### API Data Structures
-
-**Holdings endpoint** (`/accounts/holdings`) returns:
-```json
-{
-  "portfolio_holdings": [{"symbol", "quantity", "current_price", "current_market_value", "current_market_value_CAD", "currency", "percentage"}],
-  "portfolio_metrics": {"Total Market Value (CAD)", "Cumulative Return", "Average Daily Return", "Sharpe Ratio", "Symbols", "Allocations"}
-}
-```
-
-**Market data endpoint** (`/market/data`) returns array of `{symbol, data: [{date, open, high, low, close, volume}]}`.
-
-### External Dependencies
-
-- yfinance: Used for exchange rate data (USD/CAD, CAD/CNY, USD/CNY, BTC/USD)
-- plotly: Interactive charts (pie, bar, line, candlestick)
-- seaborn/matplotlib: Correlation heatmap
+- The legacy Streamlit app (`app.py`, `utils.py`, `config.json`, root `requirements.txt`) was removed in July 2026; the React/FastAPI stack is the only dashboard. Don't resurrect Streamlit patterns from old commits.
+- `frontend/npm run build` runs `tsc -b` strict type-checking that `npm run dev` does not — always build before considering frontend work done.
+- Vite env vars are resolved at build time: changing `VITE_API_URL` requires rebuilding the frontend image.
