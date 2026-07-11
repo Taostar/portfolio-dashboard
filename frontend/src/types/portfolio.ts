@@ -28,6 +28,8 @@ export interface HoldingItem {
   market_value: number;
   market_value_cad: number;
   portfolio_pct: number;
+  ema_21m: number | null;
+  ema_21q: number | null;
   change_1d: number | null;
   change_1w: number | null;
   change_1m: number | null;
@@ -54,6 +56,13 @@ export interface ExchangeRateData {
   current_rate: number;
   daily_change_pct: number;
   ytd_change_pct: number;
+}
+
+export interface VixData {
+  dates: string[];
+  close_prices: number[];
+  current: number;
+  zone: string;
 }
 
 export interface BenchmarkData {

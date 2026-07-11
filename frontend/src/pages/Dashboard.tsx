@@ -1,5 +1,6 @@
 import React from 'react';
 import { PortfolioOverview } from '../components/sections/PortfolioOverview';
+import { VixIndicator } from '../components/sections/VixIndicator';
 import { AssetAllocation } from '../components/sections/AssetAllocation';
 import { CurrentHoldings } from '../components/sections/CurrentHoldings';
 import { HoldingsBarChart } from '../components/sections/HoldingsBarChart';
@@ -15,6 +16,7 @@ export const Dashboard: React.FC = () => {
       <AssetAllocation />
       <CurrentHoldings />
       <HoldingsBarChart />
+      <VixIndicator />
       <CorrelationMatrix />
       <ExchangeRates />
       <BenchmarkComparison />

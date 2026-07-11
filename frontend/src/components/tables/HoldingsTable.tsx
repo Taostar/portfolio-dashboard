@@ -1,5 +1,5 @@
 import React from 'react';
-import { getReturnColor } from '../../utils/colorUtils';
+import { getReturnColor, getPriceVsEmaColor } from '../../utils/colorUtils';
 import { formatPercent, formatNumber } from '../../utils/formatters';
 import type { HoldingItem } from '../../types/portfolio';
 
@@ -16,6 +16,15 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({ holdings }) => {
       </td>
     );
   };
+
+  const renderEmaCell = (price: number, ema: number | null) => (
+    <td
+      className="px-4 py-2 text-right"
+      style={{ color: getPriceVsEmaColor(price, ema) }}
+    >
+      {ema === null ? 'N/A' : formatNumber(ema)}
+    </td>
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -39,6 +48,12 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({ holdings }) => {
             </th>
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
               Portfolio %
+            </th>
+            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              21M EMA
+            </th>
+            <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              21Q EMA
             </th>
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
               1 Day
@@ -76,6 +91,8 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({ holdings }) => {
               <td className="px-4 py-2 text-right text-gray-900">
                 {holding.portfolio_pct.toFixed(2)}%
               </td>
+              {renderEmaCell(holding.current_price, holding.ema_21m)}
+              {renderEmaCell(holding.current_price, holding.ema_21q)}
               {renderReturnCell(holding.change_1d)}
               {renderReturnCell(holding.change_1w)}
               {renderReturnCell(holding.change_1m)}

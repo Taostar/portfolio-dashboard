@@ -5,6 +5,7 @@ import type {
   HoldingsResponse,
   CorrelationMatrix,
   ExchangeRateData,
+  VixData,
   BenchmarkData,
   CandlestickData,
 } from '../types/portfolio';
@@ -42,6 +43,11 @@ export const portfolioApi = {
 
   getExchangeRate: async (pair: string): Promise<ExchangeRateData> => {
     const response = await apiClient.get<ExchangeRateData>(`/exchange-rates/${pair}`);
+    return response.data;
+  },
+
+  getVix: async (): Promise<VixData> => {
+    const response = await apiClient.get<VixData>('/market/vix');
     return response.data;
   },
 
