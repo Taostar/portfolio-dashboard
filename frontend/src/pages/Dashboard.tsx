@@ -13,10 +13,10 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       <PortfolioOverview />
-      <VixIndicator />
       <AssetAllocation />
       <CurrentHoldings />
       <HoldingsBarChart />
+      <VixIndicator />
       <CorrelationMatrix />
       <ExchangeRates />
       <BenchmarkComparison />
