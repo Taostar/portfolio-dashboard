@@ -3,6 +3,7 @@ import type {
   PortfolioOverview,
   AllocationResponse,
   HoldingsResponse,
+  OptionsResponse,
   CorrelationMatrix,
   ExchangeRateData,
   VixData,
@@ -28,6 +29,11 @@ export const portfolioApi = {
 
   getTopHoldings: async (n: number): Promise<HoldingsResponse> => {
     const response = await apiClient.get<HoldingsResponse>(`/holdings/top/${n}`);
+    return response.data;
+  },
+
+  getOptions: async (): Promise<OptionsResponse> => {
+    const response = await apiClient.get<OptionsResponse>('/options');
     return response.data;
   },
 

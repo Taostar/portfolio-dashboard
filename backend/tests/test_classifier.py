@@ -1,6 +1,8 @@
+from datetime import date
+
 import pandas as pd
 
-from app.providers.classifier import is_option_symbol, split_holdings
+from app.providers.classifier import is_option_symbol, parse_option_symbol, split_holdings
 
 
 def test_option_symbol_regex_fallback_matches():
@@ -52,3 +54,28 @@ def test_split_holdings_splits_stocks_and_options_using_security_type_and_regex(
     # Original columns must remain intact (not dropped/renamed).
     assert list(stocks_etfs_df.columns) == list(df.columns)
     assert list(options_df.columns) == list(df.columns)
+
+
+def test_parse_option_symbol_extracts_fields():
+    assert parse_option_symbol("NVDA10Jul26P180.00") == {
+        "underlying": "NVDA",
+        "expiry_date": date(2026, 7, 10),
+        "option_type": "Put",
+        "strike": 180.0,
+    }
+
+
+def test_parse_option_symbol_call_type():
+    parsed = parse_option_symbol("GOOG2Jul26C345.00")
+    assert parsed["option_type"] == "Call"
+    assert parsed["underlying"] == "GOOG"
+    assert parsed["strike"] == 345.0
+    assert parsed["expiry_date"] == date(2026, 7, 2)
+
+
+def test_parse_option_symbol_returns_none_for_stock_symbol():
+    assert parse_option_symbol("AAPL") is None
+
+
+def test_parse_option_symbol_returns_none_for_dotted_ticker():
+    assert parse_option_symbol("IFC.TO") is None

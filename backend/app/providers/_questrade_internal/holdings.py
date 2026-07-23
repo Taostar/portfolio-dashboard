@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 from qtrade import Questrade
 
+from app.providers._questrade_internal.options import enrich_option_rows
 from app.services.manual_holdings_service import load_manual_holdings
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,9 @@ def get_account_positions(
                 # securityType is captured (not just description) so Task 3's
                 # option classifier can use it without a second API call.
                 "security_type": symbol_info.get("securityType"),
+                # symbolId lets a later option-enrichment pass batch-fetch
+                # Greeks via get_option_quotes without a second lookup.
+                "symbol_id": symbol_info.get("symbolId"),
                 "currency": position.get("currency", "CAD")
                 if symbol.endswith(".TO")
                 else position.get("currency", "USD"),
@@ -251,6 +255,7 @@ def _format_holdings_output(
                 "symbol",
                 "name",
                 "security_type",
+                "symbol_id",
                 "currency",
                 "current_price",
                 "current_market_value",
@@ -277,6 +282,8 @@ def _format_holdings_output(
             }
             if "security_type" in df.columns:
                 agg_dict["security_type"] = "first"
+            if "symbol_id" in df.columns:
+                agg_dict["symbol_id"] = "first"
 
             grouped = df.groupby("symbol").agg(agg_dict)
 
@@ -306,9 +313,11 @@ def _format_holdings_output(
                 "average_entry_price",
                 "current_market_value_CAD",
                 "security_type",
+                "symbol_id",
             ]
             available_columns = [col for col in columns_order if col in grouped.columns]
             grouped = grouped[available_columns].reset_index()
+            grouped = enrich_option_rows(grouped, quote_client)
 
             return grouped if as_dataframe else grouped.to_dict(orient="records")
 

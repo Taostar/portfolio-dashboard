@@ -29,6 +29,16 @@ export const getPriceVsEmaColor = (
 };
 
 /**
+ * Color an ITM/OTM badge — dark green when in-the-money, dark red when
+ * out-of-the-money, matching the EMA cell palette above.
+ */
+export const getItmOtmColor = (status: 'ITM' | 'OTM' | null): string => {
+  if (status === 'ITM') return '#006400';
+  if (status === 'OTM') return '#8B0000';
+  return 'inherit';
+};
+
+/**
  * Get Tailwind class for return value
  */
 export const getReturnColorClass = (value: number | null): string => {

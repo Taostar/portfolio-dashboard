@@ -1,7 +1,7 @@
-"""Endpoint tests for GET /holdings and GET /holdings/top/{n} — Task 7: split
-stocks/ETFs from options via app.providers.classifier.split_holdings, run
-calculate_market_value_changes on each half separately, and return options
-under HoldingsResponse.options. get_holdings_dataframe/load_performance are
+"""Endpoint tests for GET /holdings and GET /holdings/top/{n} — both exclude
+options (split out via app.providers.classifier.split_holdings; options are
+served by the dedicated GET /options endpoint instead, see
+test_options_endpoint.py). get_holdings_dataframe/load_performance are
 mocked (I/O boundary); calculate_market_value_changes runs for real against
 synthetic DataFrames.
 """
@@ -88,7 +88,7 @@ def _mock_io():
     )
 
 
-def test_get_holdings_splits_stocks_and_options():
+def test_get_holdings_excludes_options():
     with _mock_io():
         response = client.get("/api/v1/holdings")
 
@@ -96,10 +96,9 @@ def test_get_holdings_splits_stocks_and_options():
     body = response.json()
 
     holdings_symbols = {h["symbol"] for h in body["holdings"]}
-    options_symbols = {h["symbol"] for h in body["options"]}
 
     assert holdings_symbols == {"AAPL", "MSFT"}
-    assert options_symbols == {"NVDA10Jul26P180.00"}
+    assert "options" not in body
 
 
 def test_get_holdings_includes_ema_indicators():
@@ -112,11 +111,6 @@ def test_get_holdings_includes_ema_indicators():
     aapl = next(h for h in body["holdings"] if h["symbol"] == "AAPL")
     assert aapl["ema_21m"] == 140.0
     assert aapl["ema_21q"] == 120.0
-
-    # Options carry no EMA data.
-    option = body["options"][0]
-    assert option["ema_21m"] is None
-    assert option["ema_21q"] is None
 
 
 def test_get_holdings_serializes_when_one_symbol_has_no_performance_data():

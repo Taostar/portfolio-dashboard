@@ -3,6 +3,7 @@ import { PortfolioOverview } from '../components/sections/PortfolioOverview';
 import { VixIndicator } from '../components/sections/VixIndicator';
 import { AssetAllocation } from '../components/sections/AssetAllocation';
 import { CurrentHoldings } from '../components/sections/CurrentHoldings';
+import { OptionsSection } from '../components/sections/OptionsSection';
 import { HoldingsBarChart } from '../components/sections/HoldingsBarChart';
 import { CorrelationMatrix } from '../components/sections/CorrelationMatrix';
 import { ExchangeRates } from '../components/sections/ExchangeRates';
@@ -15,6 +16,7 @@ export const Dashboard: React.FC = () => {
       <PortfolioOverview />
       <AssetAllocation />
       <CurrentHoldings />
+      <OptionsSection />
       <HoldingsBarChart />
       <VixIndicator />
       <CorrelationMatrix />

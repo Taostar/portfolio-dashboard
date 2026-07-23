@@ -40,6 +40,17 @@ export const useTopHoldings = (n: number) => {
   });
 };
 
+export const useOptions = () => {
+  return useQuery({
+    queryKey: ['options'],
+    queryFn: portfolioApi.getOptions,
+    // Shorter than useHoldings' CACHE_1_HOUR — delta/underlying price are
+    // the fastest-moving fields here, and this matches the backend's
+    // 5-minute holdings cache TTL.
+    staleTime: CACHE_5_MIN,
+  });
+};
+
 export const useCorrelationMatrix = () => {
   return useQuery({
     queryKey: ['correlation', 'matrix'],
