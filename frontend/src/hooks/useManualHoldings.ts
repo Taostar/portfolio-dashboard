@@ -16,6 +16,9 @@ export const useUpdateManualHoldings = () => {
       queryClient.setQueryData(['manual-holdings'], config);
       queryClient.invalidateQueries({ queryKey: ['holdings'] });
       queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      // Cash-like reserves (SGOV/PSA.TO) are computed from this same
+      // manual-holdings data, so the Options summary must refresh too.
+      queryClient.invalidateQueries({ queryKey: ['options'] });
     },
   });
 };

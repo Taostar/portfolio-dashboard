@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
+import yfinance as yf
 from qtrade import Questrade
 
 from app.providers._questrade_internal.options import enrich_option_rows
@@ -425,27 +426,55 @@ def fix_average_entry_price(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _fetch_current_prices_yf(symbols: List[str]) -> Dict[str, float]:
+    """Fetch each symbol's latest close via yfinance.
+
+    Manual holdings are explicitly "not reachable via the Questrade API" —
+    Questrade's own quote lookup isn't guaranteed to even recognize these
+    symbols, and it shares the same easily-exhausted market-data rate-limit
+    bucket that already forced historical candles onto yfinance instead (see
+    market.py). Batches all symbols into one yf.download call rather than
+    fetching one at a time.
+    """
+    if not symbols:
+        return {}
+    try:
+        raw = yf.download(symbols, period="5d", progress=False)
+    except Exception as e:
+        logger.error(f"Error fetching yfinance prices for manual holdings {symbols}: {e}")
+        return {}
+    if raw is None or raw.empty:
+        return {}
+
+    prices: Dict[str, float] = {}
+    if isinstance(raw.columns, pd.MultiIndex):
+        for symbol in symbols:
+            if symbol not in raw.columns.get_level_values(1):
+                continue
+            close = raw.xs(symbol, axis=1, level=1).get("Close")
+            if close is not None and not close.dropna().empty:
+                prices[symbol] = float(close.dropna().iloc[-1])
+    else:
+        close = raw.get("Close")
+        if close is not None and not close.dropna().empty:
+            prices[symbols[0]] = float(close.dropna().iloc[-1])
+    return prices
+
+
 def add_additional_rows(df: pd.DataFrame, client: Questrade) -> pd.DataFrame:
     """Append manually-configured holdings (accounts not reachable via the
     Questrade API) loaded from the YAML config at MANUAL_HOLDINGS_CONFIG_PATH.
+    Current price comes from yfinance, not Questrade (see
+    _fetch_current_prices_yf) — `client` is unused here but kept in the
+    signature to match this module's other row-building helpers.
     """
     manual_config = load_manual_holdings()
     if not manual_config.holdings:
         return df
 
     additional_rows = pd.DataFrame([h.model_dump() for h in manual_config.holdings])
-    additional_rows["current_price"] = 0.0
-    additional_rows["current_market_value"] = 0.0
-
-    for symbol in additional_rows["symbol"]:
-        try:
-            quote = client.get_quote(symbol)
-            price = float(quote.get("lastTradePrice", 0) or 0)
-        except Exception as e:
-            logger.error(f"Error fetching quote for manual holding {symbol}: {e}")
-            continue
-        additional_rows.loc[additional_rows["symbol"] == symbol, "current_price"] = price
-
+    prices = _fetch_current_prices_yf(additional_rows["symbol"].tolist())
+    additional_rows["current_price"] = additional_rows["symbol"].map(prices).fillna(0.0)
     additional_rows["current_market_value"] = (
         additional_rows["current_price"] * additional_rows["quantity"].astype(float)
     )
