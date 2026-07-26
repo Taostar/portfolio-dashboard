@@ -77,5 +77,21 @@ def test_parse_option_symbol_returns_none_for_stock_symbol():
     assert parse_option_symbol("AAPL") is None
 
 
+def test_parse_option_symbol_returns_none_for_invalid_month_abbreviation():
+    """Structurally matches the regex (3 letters where the month goes) but
+    "Xyz" isn't a real calendar month — must not raise, must return None.
+    This is the exact crash class that took down get_holdings_dataframe for
+    both GET /holdings and GET /options in production: a single option row
+    with a matching-shape-but-unparseable symbol threw an uncaught ValueError
+    that propagated out of the whole holdings pipeline."""
+    assert parse_option_symbol("AAPL10Xyz26C100.00") is None
+
+
+def test_parse_option_symbol_returns_none_for_day_out_of_range_for_month():
+    """Day 31 doesn't exist in April — strptime raises ValueError on this
+    even though the regex shape matches; must degrade to None, not raise."""
+    assert parse_option_symbol("AAPL31Apr26C100.00") is None
+
+
 def test_parse_option_symbol_returns_none_for_dotted_ticker():
     assert parse_option_symbol("IFC.TO") is None

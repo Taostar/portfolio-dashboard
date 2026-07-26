@@ -11,7 +11,7 @@ from typing import Optional
 import pandas as pd
 from qtrade import Questrade
 
-from app.providers.classifier import is_option_symbol, parse_option_symbol
+from app.providers.classifier import get_option_mask, parse_option_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +26,26 @@ def enrich_option_rows(df: pd.DataFrame, client: Questrade) -> pd.DataFrame:
     same contract held across multiple accounts). Requires `symbol_id`
     already present on `df` (stashed by get_account_positions from
     ticker_information's symbolId) to fetch Greeks.
+
+    The whole body runs under a catch-all: this is options-only enrichment
+    layered on top of the holdings pipeline that both GET /holdings and
+    GET /options depend on, so any unexpected failure here (a live Greeks
+    call erroring, an unforeseen data shape) must degrade to "options show
+    without extra detail" rather than take down holdings/prices for every
+    other position too.
     """
+    try:
+        return _enrich_option_rows(df, client)
+    except Exception as e:
+        logger.warning(f"Error enriching option rows, returning holdings unenriched: {e}")
+        return df
+
+
+def _enrich_option_rows(df: pd.DataFrame, client: Questrade) -> pd.DataFrame:
     if df.empty or "symbol" not in df.columns:
         return df
 
-    option_mask = df["symbol"].apply(is_option_symbol)
+    option_mask = get_option_mask(df)
     if not option_mask.any():
         return df
 

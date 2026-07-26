@@ -32,16 +32,24 @@ def is_option_symbol(symbol: str, symbol_info: dict | None = None) -> bool:
     return bool(_OPTION_SYMBOL_RE.match(symbol))
 
 
-def split_holdings(holdings_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Returns (stocks_etfs_df, options_df), splitting on is_option_symbol per row."""
+def get_option_mask(holdings_df: pd.DataFrame) -> pd.Series:
+    """Per-row boolean mask of which holdings are options, via is_option_symbol
+    (security_type-aware where available). Factored out of split_holdings so
+    other callers (e.g. the option-enrichment pass) classify identically —
+    two independently-computed masks disagreeing would silently drop or
+    misclassify rows.
+    """
     if "security_type" in holdings_df.columns:
-        is_option = holdings_df.apply(
+        return holdings_df.apply(
             lambda row: is_option_symbol(row["symbol"], {"security_type": row["security_type"]}),
             axis=1,
         )
-    else:
-        is_option = holdings_df["symbol"].apply(is_option_symbol)
+    return holdings_df["symbol"].apply(is_option_symbol)
 
+
+def split_holdings(holdings_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Returns (stocks_etfs_df, options_df), splitting on is_option_symbol per row."""
+    is_option = get_option_mask(holdings_df)
     options_df = holdings_df[is_option]
     stocks_etfs_df = holdings_df[~is_option]
     return stocks_etfs_df, options_df
@@ -54,16 +62,21 @@ def parse_option_symbol(symbol: str) -> Optional[dict]:
         {"underlying": "NVDA", "expiry_date": date(2026, 7, 10),
          "option_type": "Put", "strike": 180.0}
 
-    Returns None if `symbol` doesn't match the option symbol format (mirrors
-    is_option_symbol's regex fallback, so callers can treat None the same
-    way as "not an option").
+    Returns None if `symbol` doesn't match the option symbol format, or if it
+    matches structurally but the day/month/year isn't a real calendar date
+    (e.g. day 31 of a 30-day month) — mirrors is_option_symbol's regex
+    fallback, so callers can treat None the same way as "not an option"
+    rather than crash on a single malformed/unexpected symbol.
     """
     match = _OPTION_SYMBOL_RE.match(symbol)
     if not match:
         return None
-    expiry_date = datetime.strptime(
-        f"{match.group('day')}{match.group('month')}{match.group('year')}", "%d%b%y"
-    ).date()
+    try:
+        expiry_date = datetime.strptime(
+            f"{match.group('day')}{match.group('month')}{match.group('year')}", "%d%b%y"
+        ).date()
+    except ValueError:
+        return None
     return {
         "underlying": match.group("underlying"),
         "expiry_date": expiry_date,
