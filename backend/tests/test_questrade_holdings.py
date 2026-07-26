@@ -44,13 +44,17 @@ def test_fix_average_entry_price_no_symbol_column_returns_df_unchanged():
 
 
 def _make_fake_client(positions_by_account):
+    """Mimics the REAL qtrade contract: ticker_information/get_quote called
+    with a single-item list collapse to a bare dict, not a list wrapping one
+    dict — this call site (get_account_positions) always passes [symbol], a
+    single-item list, so that's the shape it must handle."""
     client = MagicMock(spec=["get_account_id", "get_account_positions", "ticker_information", "get_quote"])
     client.get_account_id.return_value = list(positions_by_account.keys())
     client.get_account_positions.side_effect = lambda account_id: positions_by_account[account_id]
-    client.ticker_information.side_effect = lambda symbols: [
-        {"description": symbols[0], "securityType": "Stock"}
-    ]
-    client.get_quote.side_effect = lambda symbols: [{"lastTradePrice": 100.0}]
+    client.ticker_information.side_effect = lambda symbols: {
+        "description": symbols[0], "securityType": "Stock", "symbolId": 999
+    }
+    client.get_quote.side_effect = lambda symbols: {"lastTradePrice": 100.0}
     return client
 
 
@@ -99,6 +103,41 @@ def test_get_account_positions_populates_security_type_from_cache():
     result = get_account_positions(client, "111", symbol_cache={})
 
     assert result["holdings"][0]["security_type"] == "Stock"
+
+
+def test_get_account_positions_populates_symbol_id_from_bare_dict_ticker_info():
+    """Regression: ticker_information([symbol]) returns a bare dict (real
+    qtrade behavior for a single-item list), not a list wrapping one dict.
+    The old code did `ticker_info[0]` unconditionally, which raised KeyError
+    on a dict and was silently swallowed by the surrounding except — leaving
+    symbol_id (and security_type) always empty in production. This must now
+    populate correctly from the dict shape."""
+    positions_by_account = {
+        "111": [{"symbol": "AAPL", "currentMarketValue": 1000.0, "openQuantity": 10}],
+    }
+    client = _make_fake_client(positions_by_account)
+
+    result = get_account_positions(client, "111", symbol_cache={})
+
+    assert result["holdings"][0]["symbol_id"] == 999
+    assert result["holdings"][0]["security_type"] == "Stock"
+
+
+def test_get_account_positions_current_price_falls_back_to_bare_dict_quote():
+    """Regression: get_quote([symbol]) also collapses to a bare dict for a
+    single symbol. The old code only unwrapped a list return
+    (`quotes[0] if isinstance(quotes, list) else {}`), so a real dict return
+    was discarded into `quote = {}` — meaning the current_price fallback
+    (used whenever the position itself has no currentPrice) silently never
+    worked. Position deliberately omits currentPrice to force the fallback."""
+    positions_by_account = {
+        "111": [{"symbol": "AAPL", "currentMarketValue": 1000.0, "openQuantity": 10}],
+    }
+    client = _make_fake_client(positions_by_account)
+
+    result = get_account_positions(client, "111", symbol_cache={})
+
+    assert result["holdings"][0]["current_price"] == 100.0
 
 
 def test_get_all_accounts_holdings_multi_shares_symbol_cache_across_clients_and_accounts():

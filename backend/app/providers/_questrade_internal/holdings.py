@@ -91,15 +91,25 @@ def get_account_positions(
             symbol_info, quote = symbol_cache[symbol]
         else:
             try:
+                # qtrade's ticker_information collapses a single-item list
+                # request to a bare dict (not a list) — it only stays a list
+                # for multi-symbol requests, which this call site never makes.
                 ticker_info = client.ticker_information([symbol])
-                symbol_info = ticker_info[0] if ticker_info and len(ticker_info) > 0 else {}
+                if isinstance(ticker_info, list):
+                    symbol_info = ticker_info[0] if ticker_info else {}
+                else:
+                    symbol_info = ticker_info or {}
             except Exception as e:
                 logger.warning(f"Error getting ticker information for {symbol}: {e}")
                 symbol_info = {}
 
             try:
+                # Same single-item collapse behavior as ticker_information above.
                 quotes = client.get_quote([symbol])
-                quote = quotes[0] if isinstance(quotes, list) and quotes else {}
+                if isinstance(quotes, list):
+                    quote = quotes[0] if quotes else {}
+                else:
+                    quote = quotes or {}
             except Exception as e:
                 logger.warning(f"Error getting quote for {symbol}: {e}")
                 quote = {}
