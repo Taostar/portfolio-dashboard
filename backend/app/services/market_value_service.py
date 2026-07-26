@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import Optional
 from app.core.cache import cached
+from app.services.fx_utils import derive_usd_cad_rate
 
 
 @cached(cache_type="performance")
@@ -41,15 +42,7 @@ def calculate_market_value_changes(
         # a zero-value row (e.g. a personal-data-patch holding whose quote
         # lookup failed) would otherwise divide by zero and silently corrupt
         # this into NaN.
-        usd_rows = result_df[(result_df["currency"] == "USD") & (result_df["current_market_value"] != 0)]
-        cad_exchange_sample = usd_rows.head(1)
-        if not cad_exchange_sample.empty:
-            cad_exchange_rate = float(
-                cad_exchange_sample["current_market_value_CAD"].iloc[0]
-                / cad_exchange_sample["current_market_value"].iloc[0]
-            )
-        else:
-            cad_exchange_rate = 1.0
+        cad_exchange_rate = derive_usd_cad_rate(result_df)
 
         for idx, row in result_df.iterrows():
             symbol = row["symbol"]

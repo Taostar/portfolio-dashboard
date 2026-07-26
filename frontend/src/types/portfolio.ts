@@ -39,8 +39,36 @@ export interface HoldingItem {
 
 export interface HoldingsResponse {
   holdings: HoldingItem[];
-  options: HoldingItem[];
   prev_day_change_pct: number | null;
+}
+
+export interface OptionHoldingItem {
+  symbol: string;
+  underlying: string;
+  currency: string;
+  quantity: number;
+  option_type: 'Call' | 'Put';
+  strike: number;
+  expiry_date: string;
+  dte: number;
+  current_price: number;
+  market_value: number;
+  market_value_cad: number;
+  underlying_price: number | null;
+  itm_otm: 'ITM' | 'OTM' | null;
+  probability_materialized: number | null;
+}
+
+export interface OptionsSummary {
+  notional_exposure_cad: number;
+  sgov_value_cad: number;
+  psa_to_value_cad: number;
+  cash_like_reserves_cad: number;
+}
+
+export interface OptionsResponse {
+  options: OptionHoldingItem[];
+  summary: OptionsSummary;
 }
 
 export interface CorrelationMatrix {

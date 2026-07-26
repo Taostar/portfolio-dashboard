@@ -55,15 +55,13 @@ async def get_holdings():
     if holdings_df.empty:
         raise HTTPException(status_code=503, detail="Unable to fetch holdings data")
 
-    stocks_etfs_df, options_df = split_holdings(holdings_df)
+    stocks_etfs_df, _ = split_holdings(holdings_df)
 
-    # Calculate market value changes separately for each group; only the
-    # stocks/ETF group's prev_day_change feeds the response, matching
-    # today's behavior since options shouldn't affect that figure either.
+    # Calculate market value changes for stocks/ETFs; options are served by
+    # the dedicated GET /options endpoint instead.
     updated_stocks_etfs_df, prev_day_change = calculate_market_value_changes(
         stocks_etfs_df, performance_df
     )
-    updated_options_df, _ = calculate_market_value_changes(options_df, performance_df)
 
     # EMA indicators only apply to stocks/ETFs — option contracts aren't
     # yfinance tickers. Runs in a thread: yfinance is blocking and the
@@ -72,11 +70,8 @@ async def get_holdings():
     ema_map = await asyncio.to_thread(fetch_ema_indicators, symbols)
 
     holdings = _build_holding_items(updated_stocks_etfs_df, ema_map)
-    options = _build_holding_items(updated_options_df)
 
-    return HoldingsResponse(
-        holdings=holdings, options=options, prev_day_change_pct=prev_day_change
-    )
+    return HoldingsResponse(holdings=holdings, prev_day_change_pct=prev_day_change)
 
 
 @router.get("/top/{n}", response_model=HoldingsResponse)
